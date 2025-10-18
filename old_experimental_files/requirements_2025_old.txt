@@ -1,0 +1,111 @@
+# State-of-the-Art AI HR System Requirements - 2025 Edition
+# Latest compatible versions for cutting-edge functionality
+
+# Core Framework
+streamlit>=1.32.0
+streamlit-webrtc>=0.47.1
+streamlit-option-menu>=0.3.12
+
+# AI/ML Core Libraries
+transformers>=4.38.0
+torch>=2.2.0
+torchaudio>=2.2.0
+numpy<2.0.0
+pandas>=2.2.0
+scikit-learn>=1.4.0
+
+# Advanced NLP & Speech Processing
+spacy>=3.7.0
+openai-whisper>=20231117
+whisper-timestamped>=1.14.2
+SpeechRecognition>=3.10.1
+pyttsx3>=2.90
+pyaudio>=0.2.11
+sounddevice>=0.4.6
+soundfile>=0.12.1
+
+# Sentiment Analysis & Bias Detection
+textblob>=0.17.1
+vaderSentiment>=3.3.2
+fairlearn>=0.10.0
+aif360>=0.5.0
+
+# Advanced Visualization
+plotly>=5.18.0
+altair>=5.2.0
+seaborn>=0.13.0
+matplotlib>=3.8.0
+
+# Resume Processing & Document Handling
+PyPDF2>=3.0.1
+pdfplumber>=0.10.0
+python-docx>=1.1.0
+python-docx2txt>=0.8
+pypdf>=4.0.0
+
+# Web & API Integration
+requests>=2.31.0
+httpx>=0.26.0
+aiohttp>=3.9.0
+
+# Data Processing & Analytics
+openpyxl>=3.1.0
+xlsxwriter>=3.1.9
+python-dateutil>=2.8.2
+
+# Audio Processing & Voice Analysis
+librosa>=0.10.1
+pyannote.audio>=3.1.1
+webrtcvad>=2.0.10
+
+# Real-time Features
+asyncio-mqtt>=0.16.1
+websockets>=12.0
+
+# Emotion Detection & Computer Vision
+opencv-python>=4.9.0
+mediapipe>=0.10.9
+fer>=22.5.1
+
+# Multi-language Support
+googletrans>=4.0.0
+langdetect>=1.0.9
+
+# Database & Storage
+sqlite3
+sqlalchemy>=2.0.25
+
+# Utilities
+python-dotenv>=1.0.0
+pydantic>=2.5.0
+typing-extensions>=4.9.0
+uuid
+pathlib
+datetime
+json5>=0.9.14
+
+# Development & Testing
+pytest>=8.0.0
+black>=24.0.0
+flake8>=7.0.0
+
+# Security & Authentication
+cryptography>=42.0.0
+passlib>=1.7.4
+
+# Email Integration
+smtplib
+email-validator>=2.1.0
+
+# Advanced Features
+gradio>=4.15.0
+huggingface-hub>=0.20.0
+sentence-transformers>=2.3.0
+
+# Performance Optimization
+numba>=0.59.0
+cython>=3.0.7
+
+# Logging & Monitoring
+loguru>=0.7.2
+rich>=13.7.0

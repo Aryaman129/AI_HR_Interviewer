@@ -1,0 +1,88 @@
+{
+  "core_questions": [
+    {
+      "id": "ctc_expectation",
+      "question": "What is your expected CTC (Cost to Company)?",
+      "category": "compensation",
+      "required": true,
+      "followup_triggers": ["range", "negotiable", "depends"]
+    },
+    {
+      "id": "job_change_reason",
+      "question": "What is your reason for job change?",
+      "category": "motivation",
+      "required": true,
+      "followup_triggers": ["growth", "better opportunity", "current company"]
+    },
+    {
+      "id": "location_suitability",
+      "question": "Are you suitable to work at this location?",
+      "category": "logistics",
+      "required": true,
+      "followup_triggers": ["remote", "hybrid", "relocation"]
+    }
+  ],
+  "resume_verification": [
+    {
+      "pattern": "Can you elaborate on your experience with {skill}?",
+      "category": "technical_verification",
+      "triggers": ["programming languages", "frameworks", "tools", "technologies"]
+    },
+    {
+      "pattern": "Tell me more about your role at {company} where you worked on {project}?",
+      "category": "experience_verification",
+      "triggers": ["projects", "responsibilities", "achievements"]
+    },
+    {
+      "pattern": "How many years of hands-on experience do you have with {technology}?",
+      "category": "experience_depth",
+      "triggers": ["years", "experience", "proficiency"]
+    }
+  ],
+  "role_specific_templates": {
+    "software_engineer": [
+      "Describe your approach to debugging complex issues",
+      "How do you ensure code quality in your projects?",
+      "What's your experience with version control systems?",
+      "How do you handle tight deadlines while maintaining code quality?"
+    ],
+    "cybersecurity": [
+      "What security frameworks are you familiar with?",
+      "How do you stay updated with the latest security threats?",
+      "Describe a security incident you've handled",
+      "What's your approach to vulnerability assessment?"
+    ],
+    "data_scientist": [
+      "What machine learning algorithms have you implemented?",
+      "How do you handle missing data in datasets?",
+      "Describe your experience with data visualization",
+      "What's your approach to model validation?"
+    ],
+    "product_manager": [
+      "How do you prioritize features in a product roadmap?",
+      "Describe your experience with stakeholder management",
+      "How do you measure product success?",
+      "What's your approach to user research?"
+    ]
+  },
+  "followup_patterns": {
+    "insufficient_detail": [
+      "Could you provide more specific details about that?",
+      "Can you give me a concrete example?",
+      "What specific technologies or tools did you use?",
+      "How did you measure the success of that project?"
+    ],
+    "technical_depth": [
+      "What challenges did you face while implementing that?",
+      "How did you optimize the performance?",
+      "What would you do differently if you had to do it again?",
+      "How did you ensure the solution was scalable?"
+    ],
+    "behavioral": [
+      "How did you handle that situation?",
+      "What was your role in the team?",
+      "How did you communicate with stakeholders?",
+      "What did you learn from that experience?"
+    ]
+  }
+}

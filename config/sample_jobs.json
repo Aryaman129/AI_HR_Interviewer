@@ -1,0 +1,63 @@
+[
+  {
+    "role": "Senior Software Engineer",
+    "required_skills": [
+      "Python",
+      "JavaScript",
+      "React",
+      "AWS",
+      "Docker"
+    ],
+    "preferred_skills": [
+      "Kubernetes",
+      "TypeScript",
+      "PostgreSQL",
+      "Redis"
+    ],
+    "min_experience_years": 5,
+    "education_level": "Bachelor",
+    "location": "Remote",
+    "description": "We are looking for a Senior Software Engineer to join our growing team..."
+  },
+  {
+    "role": "Cybersecurity Specialist",
+    "required_skills": [
+      "Network Security",
+      "SIEM",
+      "Python",
+      "Linux",
+      "Incident Response"
+    ],
+    "preferred_skills": [
+      "CISSP",
+      "CEH",
+      "Penetration Testing",
+      "Cloud Security"
+    ],
+    "min_experience_years": 3,
+    "education_level": "Bachelor",
+    "location": "New York",
+    "description": "Join our cybersecurity team to protect critical infrastructure..."
+  },
+  {
+    "role": "Data Scientist",
+    "required_skills": [
+      "Python",
+      "Machine Learning",
+      "SQL",
+      "Statistics",
+      "Pandas"
+    ],
+    "preferred_skills": [
+      "TensorFlow",
+      "AWS",
+      "Tableau",
+      "R",
+      "Deep Learning"
+    ],
+    "min_experience_years": 2,
+    "education_level": "Master",
+    "location": "San Francisco",
+    "description": "We need a Data Scientist to help us make data-driven decisions..."
+  }
+]

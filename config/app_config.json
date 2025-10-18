@@ -1,0 +1,48 @@
+{
+  "app": {
+    "name": "AI HR Interviewer",
+    "version": "1.0.0",
+    "debug": true
+  },
+  "models": {
+    "llm": {
+      "provider": "ollama",
+      "model_name": "llama3:latest",
+      "base_url": "http://localhost:11434",
+      "temperature": 0.7,
+      "max_tokens": 1000
+    },
+    "embeddings": {
+      "model_name": "all-MiniLM-L6-v2",
+      "device": "cpu"
+    },
+    "whisper": {
+      "model_size": "base",
+      "language": "en"
+    },
+    "tts": {
+      "model_name": "tts_models/en/ljspeech/tacotron2-DDC",
+      "vocoder": "vocoder_models/en/ljspeech/hifigan_v2"
+    }
+  },
+  "interview": {
+    "max_duration_minutes": 30,
+    "silence_timeout_seconds": 10,
+    "confidence_threshold": 0.6,
+    "auto_followup": true,
+    "save_audio": true
+  },
+  "scoring": {
+    "technical_weight": 0.4,
+    "communication_weight": 0.3,
+    "experience_weight": 0.3,
+    "pass_threshold": 0.65
+  },
+  "paths": {
+    "resumes": "backend/data/resumes",
+    "vectorstore": "backend/data/vectorstore",
+    "audio_logs": "frontend/audio_logs",
+    "chat_logs": "frontend/chat_logs",
+    "models": "backend/models"
+  }
+}

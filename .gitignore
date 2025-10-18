@@ -1,0 +1,84 @@
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+
+# Virtual Environments
+ai_hr_advanced_2025/
+ai_hr_fresh/
+venv/
+env/
+ENV/
+.venv
+
+# IDEs
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+.DS_Store
+
+# Logs and Audio
+frontend/audio_logs/*.wav
+frontend/audio_logs/*.mp3
+frontend/chat_logs/*.json
+*.log
+
+# Data files
+backend/data/resumes/*.pdf
+backend/data/resumes/*.docx
+backend/data/resumes/*.txt
+backend/data/vectorstore/
+
+# Models (large files)
+backend/models/
+*.pth
+*.bin
+*.onnx
+*.h5
+
+# OS
+Thumbs.db
+desktop.ini
+
+# Distribution / packaging
+build/
+develop-eggs/
+dist/
+downloads/
+eggs/
+.eggs/
+lib/
+lib64/
+parts/
+sdist/
+var/
+wheels/
+*.egg-info/
+.installed.cfg
+*.egg
+
+# Jupyter Notebook
+.ipynb_checkpoints
+
+# Environment variables
+.env
+.env.local
+
+# Testing
+.pytest_cache/
+.coverage
+htmlcov/
+
+# Temporary files
+*.tmp
+*.bak
+*.swp
+temp/
+tmp/
+
+# VSCode AI rules (keep this if needed)
+# .github/instructions/codacy.instructions.md
