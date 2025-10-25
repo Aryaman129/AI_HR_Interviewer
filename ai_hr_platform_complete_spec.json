@@ -1,0 +1,893 @@
+{
+  "project": {
+    "name": "AI-HR Automation Platform",
+    "description": "Zero-cost MVP that replaces 5-10 HR interns with AI-powered recruitment automation",
+    "version": "2.0.0-mvp",
+    "target_market": "Indian SMBs (20-200 employees)",
+    "development_timeline": "8 weeks",
+    "development_cost": "₹0",
+    "competitive_advantage": [
+      "10x cheaper than Paradox AI ($100K/year)",
+      "Voice + Text (competitors: text only)",
+      "India-focused (WhatsApp, Hindi support)",
+      "Free voice interviews (vs Bland AI $0.08/min)"
+    ]
+  },
+  "implementation_phases": {
+    "week_1": {
+      "phase_name": "Foundation & Setup",
+      "days": {
+        "day_1_2": {
+          "tasks": [
+            {
+              "task_id": "T001",
+              "name": "Apply for GitHub Student Developer Pack",
+              "url": "education.github.com/pack",
+              "expected_benefits": "$650+ in credits",
+              "priority": "CRITICAL"
+            },
+            {
+              "task_id": "T002",
+              "name": "Install Docker and Docker Compose",
+              "commands": [
+                "sudo apt install docker.io docker-compose",
+                "docker --version"
+              ],
+              "verification": "docker ps should work"
+            },
+            {
+              "task_id": "T003",
+              "name": "Install Ollama and download Llama 3.1 8B",
+              "commands": [
+                "curl -fsSL https://ollama.com/install.sh | sh",
+                "ollama pull llama3.1:8b"
+              ],
+              "download_size": "4-5GB",
+              "hardware_required": "RTX 4050 6GB+"
+            },
+            {
+              "task_id": "T004",
+              "name": "Install spaCy English model",
+              "commands": [
+                "pip install spacy",
+                "python -m spacy download en_core_web_lg"
+              ],
+              "size": "~500MB"
+            },
+            {
+              "task_id": "T005",
+              "name": "Create project directory structure",
+              "structure": {
+                "ai-hr-platform/": {
+                  "backend/": [
+                    "api/",
+                    "services/",
+                    "models/",
+                    "tests/",
+                    "migrations/"
+                  ],
+                  "frontend/": [
+                    "src/",
+                    "public/",
+                    "components/"
+                  ],
+                  "docker/": [
+                    "docker-compose.yml"
+                  ],
+                  "n8n/": [
+                    "workflows/"
+                  ],
+                  "docs/": [
+                    "README.md"
+                  ]
+                }
+              }
+            }
+          ]
+        },
+        "day_3_4": {
+          "tasks": [
+            {
+              "task_id": "T006",
+              "name": "Setup docker-compose.yml",
+              "file_path": "docker-compose.yml",
+              "services_required": [
+                "postgres",
+                "redis",
+                "n8n",
+                "backend",
+                "frontend"
+              ],
+              "reference_file": "See complete docker-compose.yml in documentation"
+            },
+            {
+              "task_id": "T007",
+              "name": "Create database schema with pgvector",
+              "tables_to_create": [
+                "organizations",
+                "users",
+                "job_requisitions",
+                "candidates",
+                "applications",
+                "interviews",
+                "review_queue",
+                "audit_logs",
+                "feedback_data"
+              ],
+              "migration_tool": "Alembic",
+              "commands": [
+                "pip install alembic psycopg2-binary",
+                "alembic init migrations",
+                "alembic revision --autogenerate -m 'initial'",
+                "alembic upgrade head"
+              ]
+            },
+            {
+              "task_id": "T008",
+              "name": "Initialize FastAPI project",
+              "dependencies": [
+                "fastapi==0.104.1",
+                "uvicorn[standard]==0.24.0",
+                "pydantic==2.4.2",
+                "sqlalchemy==2.0.23",
+                "psycopg2-binary==2.9.9"
+              ],
+              "main_file": "backend/api/main.py",
+              "key_features": [
+                "CORS middleware",
+                "JWT authentication",
+                "Auto API docs at /docs"
+              ]
+            },
+            {
+              "task_id": "T009",
+              "name": "Setup authentication (JWT)",
+              "files_to_create": [
+                "backend/core/auth.py",
+                "backend/models/user.py"
+              ],
+              "libraries": [
+                "python-jose[cryptography]",
+                "passlib[bcrypt]"
+              ]
+            }
+          ]
+        },
+        "day_5_7": {
+          "tasks": [
+            {
+              "task_id": "T010",
+              "name": "Implement Resume Parser",
+              "subtasks": [
+                {
+                  "subtask_id": "T010a",
+                  "name": "OCR integration for images",
+                  "libraries": [
+                    "pytesseract",
+                    "pdf2image",
+                    "pillow"
+                  ],
+                  "file": "backend/services/resume_parser.py"
+                },
+                {
+                  "subtask_id": "T010b",
+                  "name": "spaCy NER pipeline",
+                  "model": "en_core_web_lg",
+                  "extracts": [
+                    "PERSON",
+                    "ORG",
+                    "GPE",
+                    "DATE"
+                  ]
+                },
+                {
+                  "subtask_id": "T010c",
+                  "name": "Extract education, experience, skills",
+                  "methods": [
+                    "_extract_education()",
+                    "_extract_experience()",
+                    "_extract_skills()"
+                  ]
+                },
+                {
+                  "subtask_id": "T010d",
+                  "name": "Generate embeddings",
+                  "model": "sentence-transformers/all-MiniLM-L6-v2",
+                  "output": "384-dim vector",
+                  "storage": "pgvector"
+                }
+              ],
+              "testing": {
+                "test_cases": 10,
+                "sample_resumes": "Use diverse Indian resume formats"
+              },
+              "estimated_effort": "2-3 days"
+            }
+          ]
+        }
+      }
+    },
+    "week_2": {
+      "phase_name": "Core AI Services",
+      "days": {
+        "day_8_10": {
+          "tasks": [
+            {
+              "task_id": "T011",
+              "name": "Implement AI Screening Engine",
+              "file": "backend/services/ai_screener.py",
+              "model": "Llama 3.1 8B via Ollama",
+              "key_functions": [
+                {
+                  "function": "screen_candidate()",
+                  "inputs": [
+                    "resume_data",
+                    "job_requirements",
+                    "org_preferences"
+                  ],
+                  "outputs": [
+                    "overall_score",
+                    "breakdown",
+                    "strengths",
+                    "concerns",
+                    "recommendation"
+                  ]
+                },
+                {
+                  "function": "_calculate_education_score()",
+                  "weight": 0.25
+                },
+                {
+                  "function": "_calculate_experience_score()",
+                  "weight": 0.35
+                },
+                {
+                  "function": "_calculate_skills_score()",
+                  "weight": 0.3
+                },
+                {
+                  "function": "_calculate_cultural_fit()",
+                  "weight": 0.1
+                }
+              ],
+              "prompt_template": "Create dynamic prompt with org preferences + job requirements",
+              "processing_time_target": "3-8 seconds",
+              "accuracy_target": "80-85%"
+            }
+          ]
+        },
+        "day_11_14": {
+          "tasks": [
+            {
+              "task_id": "T012",
+              "name": "Build Customization System",
+              "features": [
+                "Per-company weight customization",
+                "Per-job criteria (must-haves, deal-breakers)",
+                "Threshold configuration",
+                "Keyword preferences"
+              ],
+              "database_storage": "organizations.ai_preferences (JSONB)",
+              "api_endpoints": [
+                "POST /api/orgs/{org_id}/preferences",
+                "GET /api/orgs/{org_id}/preferences",
+                "PATCH /api/orgs/{org_id}/preferences"
+              ]
+            },
+            {
+              "task_id": "T013",
+              "name": "Implement confidence scoring",
+              "logic": "Based on decision consistency and data quality",
+              "triggers_human_review": "confidence < 0.75"
+            },
+            {
+              "task_id": "T014",
+              "name": "Build review queue trigger logic",
+              "conditions": [
+                "score 60-75 (borderline)",
+                "confidence < 0.75",
+                "conflicting signals",
+                "random 10% sample for compliance"
+              ],
+              "action": "Insert into review_queue table"
+            }
+          ]
+        }
+      }
+    },
+    "week_3": {
+      "phase_name": "Voice Interview System",
+      "days": {
+        "day_15_17": {
+          "tasks": [
+            {
+              "task_id": "T015",
+              "name": "Setup Twilio Integration",
+              "steps": [
+                "Create Twilio trial account ($15 credits)",
+                "Get phone number (from trial)",
+                "Configure webhook URLs",
+                "Install Twilio SDK: pip install twilio"
+              ],
+              "files": [
+                "backend/services/voice_service.py",
+                "backend/api/webhooks/twilio.py"
+              ]
+            },
+            {
+              "task_id": "T016",
+              "name": "Implement phone call initiation",
+              "function": "initiate_voice_interview(application_id, candidate_phone)",
+              "twiml_generation": "Dynamic TwiML for question flow",
+              "test": "Place test call to your own phone"
+            },
+            {
+              "task_id": "T017",
+              "name": "Build TwiML webhook endpoints",
+              "endpoints": [
+                "POST /webhooks/twilio/voice",
+                "POST /webhooks/twilio/gather",
+                "POST /webhooks/twilio/status"
+              ],
+              "handles": "Call events, recording completion, status updates"
+            }
+          ]
+        },
+        "day_18_21": {
+          "tasks": [
+            {
+              "task_id": "T018",
+              "name": "Integrate Whisper for transcription",
+              "installation": "pip install openai-whisper",
+              "model": "base or small (300MB or 500MB)",
+              "hardware": "GPU accelerated (your RTX 4050)",
+              "function": "transcribe_audio(audio_file_path) -> transcript_text",
+              "languages": [
+                "en",
+                "hi"
+              ]
+            },
+            {
+              "task_id": "T019",
+              "name": "Build Llama-based response analysis",
+              "function": "analyze_interview_response(question, answer)",
+              "outputs": [
+                "clarity_score",
+                "relevance_score",
+                "technical_depth",
+                "enthusiasm_level",
+                "red_flags",
+                "highlights"
+              ],
+              "prompt_engineering": "Design prompts for objective evaluation"
+            },
+            {
+              "task_id": "T020",
+              "name": "Generate interview summaries",
+              "function": "generate_interview_summary(all_responses)",
+              "output": "Overall recommendation with scores and reasoning"
+            },
+            {
+              "task_id": "T021",
+              "name": "Store recordings in Cloudflare R2",
+              "setup": "Create Cloudflare account + R2 bucket (10GB free)",
+              "library": "boto3 (S3-compatible)",
+              "function": "upload_to_r2(audio_file) -> public_url"
+            },
+            {
+              "task_id": "T022",
+              "name": "Build HR playback interface",
+              "frontend_component": "AudioPlayer.tsx",
+              "features": [
+                "Play/pause",
+                "Speed control",
+                "Transcript sync",
+                "Jump to timestamp"
+              ]
+            }
+          ]
+        }
+      }
+    },
+    "week_4": {
+      "phase_name": "n8n Integration & Frontend Foundation",
+      "days": {
+        "day_22_24": {
+          "tasks": [
+            {
+              "task_id": "T023",
+              "name": "Setup n8n in Docker",
+              "docker_compose_service": "n8n",
+              "access": "http://localhost:5678",
+              "initial_login": "Create admin account",
+              "backup": "Mount ./n8n/workflows volume"
+            },
+            {
+              "task_id": "T024",
+              "name": "Create core n8n workflows",
+              "workflows": [
+                {
+                  "name": "New Candidate Notification",
+                  "trigger": "Webhook from FastAPI",
+                  "actions": [
+                    "Format message",
+                    "Send Slack",
+                    "Send WhatsApp",
+                    "Log to Sheets"
+                  ]
+                },
+                {
+                  "name": "Interview Scheduling",
+                  "trigger": "Candidate approved",
+                  "actions": [
+                    "Check Google Calendar",
+                    "Send options",
+                    "Wait for reply",
+                    "Book slot",
+                    "Create Zoom link"
+                  ]
+                },
+                {
+                  "name": "Background Check Plugin",
+                  "trigger": "HR request",
+                  "actions": [
+                    "Call SpringVerify API",
+                    "Wait for results",
+                    "Alert if issues"
+                  ]
+                }
+              ]
+            },
+            {
+              "task_id": "T025",
+              "name": "Integrate Google Calendar",
+              "setup": "Create Google Cloud project + OAuth credentials",
+              "scope": "calendar.readonly + calendar.events",
+              "n8n_node": "Google Calendar",
+              "test": "Read your own calendar availability"
+            },
+            {
+              "task_id": "T026",
+              "name": "Add WhatsApp via Twilio",
+              "setup": "Twilio WhatsApp sandbox (free for testing)",
+              "production": "WhatsApp Business API approval needed",
+              "n8n_node": "Twilio (WhatsApp type)"
+            }
+          ]
+        },
+        "day_25_28": {
+          "tasks": [
+            {
+              "task_id": "T027",
+              "name": "Initialize React + TypeScript project",
+              "commands": [
+                "npm create vite@latest frontend -- --template react-ts",
+                "cd frontend",
+                "npm install"
+              ],
+              "verify": "npm run dev (should open localhost:5173)"
+            },
+            {
+              "task_id": "T028",
+              "name": "Setup Tailwind CSS + Ant Design",
+              "install": "npm install antd",
+              "config": "tailwind.config.js + import 'antd/dist/reset.css'",
+              "test": "Create Button with both libraries"
+            },
+            {
+              "task_id": "T029",
+              "name": "Build authentication pages",
+              "pages": [
+                "Login.tsx",
+                "Signup.tsx",
+                "ForgotPassword.tsx"
+              ],
+              "features": [
+                "Form validation",
+                "JWT storage in localStorage",
+                "Redirect after login"
+              ]
+            },
+            {
+              "task_id": "T030",
+              "name": "Create main layout structure",
+              "components": [
+                "Header.tsx",
+                "Sidebar.tsx",
+                "Layout.tsx"
+              ],
+              "navigation": "Dashboard, Candidates, Jobs, Analytics, Settings"
+            },
+            {
+              "task_id": "T031",
+              "name": "Implement routing",
+              "library": "react-router-dom v6",
+              "routes": [
+                "/login",
+                "/dashboard",
+                "/candidates",
+                "/candidates/:id",
+                "/jobs",
+                "/review-queue",
+                "/analytics"
+              ],
+              "protected_routes": "Redirect to /login if no token"
+            }
+          ]
+        }
+      }
+    },
+    "week_5_to_8_summary": {
+      "week_5": "Human-in-Loop review queue + AI learning system",
+      "week_6": "Dashboard Kanban view + Analytics",
+      "week_7": "Smart scheduling + Multi-channel communication",
+      "week_8": "Testing + Security + Demo preparation",
+      "details": "See full timeline in attached documents"
+    }
+  },
+  "features_specification": [
+    {
+      "feature_id": "F001",
+      "name": "Intelligent Resume Parsing",
+      "status": "MVP",
+      "priority": "CRITICAL",
+      "implementation_week": 1,
+      "estimated_effort_days": "5-7",
+      "dependencies": [
+        "spacy",
+        "sentence-transformers",
+        "pytesseract",
+        "pdf2text"
+      ],
+      "models_required": [
+        {
+          "name": "spaCy en_core_web_lg",
+          "purpose": "NER",
+          "training_required": false,
+          "cost": "FREE"
+        },
+        {
+          "name": "sentence-transformers/all-MiniLM-L6-v2",
+          "purpose": "Embeddings",
+          "output_dim": 384,
+          "training_required": false,
+          "cost": "FREE"
+        }
+      ],
+      "api_endpoints": [
+        {
+          "method": "POST",
+          "path": "/api/resumes/parse",
+          "request_body": {
+            "file": "multipart/form-data (PDF/DOCX/Image)"
+          },
+          "response": {
+            "personal": {
+              "name": "str",
+              "email": "str",
+              "phone": "str"
+            },
+            "education": "list[dict]",
+            "experience": "list[dict]",
+            "skills": "list[str]",
+            "embedding": "list[float](384)",
+            "parsing_confidence": "float"
+          },
+          "processing_time": "2-5 seconds"
+        }
+      ],
+      "testing_requirements": {
+        "test_resumes": 10,
+        "formats": [
+          "PDF",
+          "DOCX",
+          "JPG"
+        ],
+        "target_accuracy": "85-92%"
+      }
+    },
+    {
+      "feature_id": "F002",
+      "name": "Customizable AI Screening Engine",
+      "status": "MVP",
+      "priority": "CRITICAL",
+      "implementation_week": 2,
+      "estimated_effort_days": "7-10",
+      "model": "Llama 3.1 8B via Ollama",
+      "scoring_dimensions": {
+        "education": {
+          "default_weight": 0.25,
+          "customizable": true
+        },
+        "experience": {
+          "default_weight": 0.35,
+          "customizable": true
+        },
+        "skills": {
+          "default_weight": 0.3,
+          "customizable": true
+        },
+        "cultural_fit": {
+          "default_weight": 0.1,
+          "customizable": true
+        }
+      },
+      "thresholds": {
+        "auto_proceed": {
+          "score_gte": 75,
+          "confidence_gte": 0.8
+        },
+        "human_review": {
+          "score_range": [
+            60,
+            75
+          ],
+          "confidence_lt": 0.7
+        },
+        "auto_reject": {
+          "score_lt": 50,
+          "confidence_gte": 0.8
+        }
+      },
+      "api_endpoints": [
+        {
+          "method": "POST",
+          "path": "/api/screening/evaluate",
+          "request_body": {
+            "candidate_id": "UUID",
+            "job_id": "UUID",
+            "org_preferences": "object (optional)"
+          },
+          "response": {
+            "overall_score": "int (0-100)",
+            "breakdown": {
+              "education_score": "int",
+              "experience_score": "int",
+              "skills_score": "int",
+              "cultural_fit_score": "int"
+            },
+            "strengths": "list[str]",
+            "concerns": "list[str]",
+            "red_flags": "list[str]",
+            "recommendation": "proceed | reject | review",
+            "confidence": "float (0-1)",
+            "reasoning": "str"
+          },
+          "processing_time": "3-8 seconds"
+        }
+      ]
+    },
+    {
+      "feature_id": "F003",
+      "name": "AI Voice Interview System",
+      "status": "MVP",
+      "priority": "CRITICAL",
+      "implementation_week": 3,
+      "estimated_effort_days": "10-14",
+      "components": [
+        {
+          "component": "Twilio Voice API",
+          "purpose": "Telephony",
+          "cost": "~₹0.50-1/interview"
+        },
+        {
+          "component": "Whisper (base)",
+          "purpose": "STT",
+          "cost": "FREE (local GPU)"
+        },
+        {
+          "component": "Llama 3.1 8B",
+          "purpose": "Analysis",
+          "cost": "FREE (local)"
+        },
+        {
+          "component": "ElevenLabs/Coqui TTS",
+          "purpose": "TTS",
+          "cost": "FREE tier or local"
+        }
+      ],
+      "interview_flow": [
+        "System calls candidate via Twilio",
+        "AI greets and explains process",
+        "Ask 5-7 questions (default + custom)",
+        "Record each response (max 2 min)",
+        "Transcribe with Whisper",
+        "Analyze each response with Llama",
+        "Generate overall summary",
+        "Store recording in R2"
+      ],
+      "api_endpoints": [
+        {
+          "method": "POST",
+          "path": "/api/voice/initiate",
+          "request_body": {
+            "application_id": "UUID",
+            "candidate_phone": "str"
+          },
+          "response": {
+            "call_sid": "str",
+            "status": "str"
+          }
+        },
+        {
+          "method": "POST",
+          "path": "/webhooks/twilio/voice",
+          "purpose": "Handle call events from Twilio"
+        },
+        {
+          "method": "GET",
+          "path": "/api/voice/recording/{call_sid}",
+          "response": {
+            "recording_url": "str",
+            "transcript": "str",
+            "analysis": "object"
+          }
+        }
+      ]
+    },
+    {
+      "feature_id": "F004",
+      "name": "Live AI-Proctored Video Interviews",
+      "status": "POST-FUNDING",
+      "priority": "LOW",
+      "implementation_timeline": "Month 3-6 after funding",
+      "estimated_cost": "₹5-10 lakhs to build",
+      "rationale": "Voice interviews achieve 95% of value at 1% of cost for MVP"
+    },
+    {
+      "feature_id": "F005",
+      "name": "Human-in-Loop Review Queue",
+      "status": "MVP",
+      "priority": "CRITICAL",
+      "implementation_week": 5,
+      "estimated_effort_days": "7-10",
+      "triggers": [
+        "AI score between 60-75",
+        "AI confidence < 0.75",
+        "Conflicting signals",
+        "Random 10% sample"
+      ],
+      "api_endpoints": [
+        {
+          "method": "GET",
+          "path": "/api/review-queue",
+          "query_params": [
+            "org_id",
+            "priority",
+            "assigned_to"
+          ],
+          "response": "list[ReviewItem]"
+        },
+        {
+          "method": "POST",
+          "path": "/api/review-queue/{item_id}/decision",
+          "request_body": {
+            "decision": "approved | rejected | escalated",
+            "notes": "str",
+            "reviewer_id": "UUID"
+          }
+        }
+      ]
+    },
+    {
+      "feature_id": "F006",
+      "name": "n8n Integration Layer",
+      "status": "MVP",
+      "priority": "HIGH",
+      "implementation_week": 4,
+      "estimated_effort_days": "3-5",
+      "setup": "Docker container with 700+ integrations",
+      "cost_savings": "$1,800-6,000/year vs Zapier/Make",
+      "workflows_to_build": 5
+    }
+  ],
+  "database_schema_summary": {
+    "tables_count": 9,
+    "key_tables": [
+      {
+        "name": "organizations",
+        "columns": 8,
+        "critical_field": "ai_preferences (JSONB)"
+      },
+      {
+        "name": "candidates",
+        "columns": 9,
+        "critical_field": "embedding (VECTOR(384))"
+      },
+      {
+        "name": "applications",
+        "columns": 17,
+        "tracks": "Full application lifecycle"
+      },
+      {
+        "name": "review_queue",
+        "columns": 12,
+        "purpose": "Human review workflow"
+      },
+      {
+        "name": "audit_logs",
+        "columns": 9,
+        "purpose": "Compliance and transparency"
+      }
+    ],
+    "extensions_required": [
+      "pgvector"
+    ],
+    "migration_tool": "Alembic"
+  },
+  "deployment": {
+    "local_development": {
+      "command": "docker-compose up",
+      "access": {
+        "backend": "http://localhost:8000",
+        "frontend": "http://localhost:3000",
+        "n8n": "http://localhost:5678",
+        "postgres": "localhost:5432"
+      },
+      "cost": "FREE"
+    },
+    "production_options": [
+      {
+        "platform": "Heroku",
+        "cost": "$0 (24 months with student pack)",
+        "pros": "Easiest deployment",
+        "setup": "git push heroku main"
+      },
+      {
+        "platform": "DigitalOcean",
+        "cost": "$0 for 16 months ($200 credits)",
+        "pros": "More control, better for scaling",
+        "setup": "Docker on $12/month droplet"
+      }
+    ]
+  },
+  "testing_checklist": [
+    {
+      "test": "Resume parsing accuracy",
+      "target": "85%+",
+      "sample_size": 10
+    },
+    {
+      "test": "AI screening agreement with humans",
+      "target": "80%+",
+      "sample_size": 20
+    },
+    {
+      "test": "Voice interview transcription accuracy",
+      "target": "95%+",
+      "language": "English/Hindi"
+    },
+    {
+      "test": "End-to-end workflow (apply → hire)",
+      "scenarios": 3
+    },
+    {
+      "test": "Load testing",
+      "concurrent_users": 100
+    },
+    {
+      "test": "Security audit",
+      "focus": "Auth, data privacy"
+    }
+  ],
+  "post_mvp_roadmap": {
+    "month_1_2": {
+      "funding": "₹50-75L pre-seed",
+      "actions": [
+        "Upgrade Twilio to production",
+        "Add ElevenLabs paid tier",
+        "Hire 1 developer + 1 sales",
+        "Onboard 20-30 pilot customers"
+      ]
+    },
+    "month_3_6": {
+      "funding": "₹2-4Cr seed",
+      "actions": [
+        "Build live AI-proctored video (₹5-10L)",
+        "Scale to 100-200 customers",
+        "Start SOC 2 certification",
+        "Reach ₹30-50L MRR"
+      ]
+    }
+  }
+}

@@ -1,0 +1,53 @@
+services:
+  # PostgreSQL with pgvector extension
+  postgres:
+    image: ankane/pgvector:latest
+    container_name: aihr_postgres
+    environment:
+      POSTGRES_USER: aihr_user
+      POSTGRES_PASSWORD: aihr_dev_password_2025
+      POSTGRES_DB: aihr_db
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+      - ./init-db.sql:/docker-entrypoint-initdb.d/init.sql
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U aihr_user -d aihr_db"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    networks:
+      - aihr_network
+
+  # Redis for caching and Celery message broker
+  redis:
+    image: redis:7-alpine
+    container_name: aihr_redis
+    ports:
+      - "6379:6379"
+    volumes:
+      - redis_data:/data
+    command: redis-server --appendonly yes
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    networks:
+      - aihr_network
+
+  # n8n is installed locally on your system (v1.97.1)
+  # Access it at: http://localhost:5678
+  # Start with: n8n start
+  # No Docker container needed
+
+volumes:
+  postgres_data:
+    driver: local
+  redis_data:
+    driver: local
+
+networks:
+  aihr_network:
+    driver: bridge

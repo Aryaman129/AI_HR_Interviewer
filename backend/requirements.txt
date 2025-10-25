@@ -1,0 +1,61 @@
+# Core Framework
+fastapi==0.115.9
+uvicorn[standard]==0.34.0
+pydantic==2.10.6
+pydantic-settings==2.7.1
+
+# Database
+sqlalchemy==2.0.36
+psycopg2-binary==2.9.10
+alembic==1.14.0
+pgvector==0.4.1
+
+# Redis & Caching
+redis==5.2.1
+hiredis==3.1.0
+
+# Task Queue
+celery==5.4.0
+
+# AI/ML
+ollama==0.4.7
+faster-whisper==1.1.1  # Replaces openai-whisper for better Python 3.13 compatibility
+sentence-transformers==4.0.1
+spacy>=3.6.0,<4.0.0  # Latest compatible version for Python 3.13
+torch==2.6.0
+transformers==4.52.4
+
+# Document Processing
+PyPDF2==3.0.1
+python-docx==1.1.2
+python-multipart==0.0.20
+
+# Communication
+twilio==9.5.1
+
+# Storage (Cloudflare R2 / AWS S3 compatible)
+boto3==1.35.93
+
+# Security & Auth
+python-jose[cryptography]==3.3.0
+passlib[bcrypt]==1.7.4
+
+# HTTP Client
+httpx==0.28.1
+aiohttp==3.11.13
+
+# LangChain (for advanced AI features)
+langchain==0.3.21
+langchain-community==0.3.20
+langchain-core==0.3.49
+langchain-ollama==0.3.0
+
+# Utilities
+python-dotenv==1.0.1
+pendulum==3.1.0  # Latest available version for Python 3.13
+
+# Development
+pytest==8.3.4
+pytest-asyncio==0.25.2
+black==24.10.0
+ruff==0.9.1

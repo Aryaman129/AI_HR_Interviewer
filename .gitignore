@@ -12,6 +12,9 @@ venv/
 env/
 ENV/
 .venv
+old_experimental_files/
+old_workspace_backup/
+old_experimental_files/
 
 # IDEs
 .vscode/
@@ -79,6 +82,4 @@ htmlcov/
 *.swp
 temp/
 tmp/
-
-# VSCode AI rules (keep this if needed)
-# .github/instructions/codacy.instructions.md
+.github/instructions/codacy.instructions.md
