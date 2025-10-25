@@ -15,6 +15,7 @@ ENV/
 old_experimental_files/
 old_workspace_backup/
 old_experimental_files/
+docs/
 
 # IDEs
 .vscode/
