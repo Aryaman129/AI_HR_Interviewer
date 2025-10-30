@@ -1,56 +1,12 @@
+
+# ============================================
 # Python
+# ============================================
 __pycache__/
 *.py[cod]
 *$py.class
 *.so
 .Python
-
-# Virtual Environments
-ai_hr_advanced_2025/
-ai_hr_fresh/
-venv/
-env/
-ENV/
-.venv
-old_experimental_files/
-old_workspace_backup/
-old_experimental_files/
-docs/
-.github\
-.github\instructions
-
-# IDEs
-.vscode/
-.idea/
-*.swp
-*.swo
-*~
-.DS_Store
-
-# Logs and Audio
-frontend/audio_logs/*.wav
-frontend/audio_logs/*.mp3
-frontend/chat_logs/*.json
-*.log
-
-# Data files
-backend/data/resumes/*.pdf
-backend/data/resumes/*.docx
-backend/data/resumes/*.txt
-backend/data/vectorstore/
-
-# Models (large files)
-backend/models/
-*.pth
-*.bin
-*.onnx
-*.h5
-
-# OS
-Thumbs.db
-desktop.ini
-
-# Distribution / packaging
 build/
 develop-eggs/
 dist/
@@ -63,26 +19,330 @@ parts/
 sdist/
 var/
 wheels/
+share/python-wheels/
 *.egg-info/
 .installed.cfg
 *.egg
+MANIFEST
+*.manifest
+*.spec
+pip-log.txt
+pip-delete-this-directory.txt
 
-# Jupyter Notebook
-.ipynb_checkpoints
+# ============================================
+# Virtual Environments
+# ============================================
+venv/
+env/
+ENV/
+env.bak/
+venv.bak/
+.venv
+ai_hr_advanced_2025/
+ai_hr_fresh/
+*.pyvenv.cfg
 
-# Environment variables
+# ============================================
+# IDEs and Editors
+# ============================================
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+.DS_Store
+*.code-workspace
+
+# ============================================
+# Environment Variables
+# ============================================
 .env
 .env.local
+.env.*.local
+*.env
 
-# Testing
-.pytest_cache/
-.coverage
-htmlcov/
+# ============================================
+# Logs
+# ============================================
+*.log
+logs/
+*.log.*
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
 
-# Temporary files
-*.tmp
-*.bak
-*.swp
+
+backend/data/resumes/*
+!backend/data/resumes/.gitkeep
+backend/data/vectorstore/*
+!backend/data/vectorstore/.gitkeep
+frontend/audio_logs/*
+!frontend/audio_logs/.gitkeep
+frontend/chat_logs/*
+!frontend/chat_logs/.gitkeep
+uploads/
 temp/
 tmp/
-.github/instructions/codacy.instructions.md
+
+# ============================================
+# ML Models and Caches
+# ============================================
+backend/models/
+*.bin
+*.onnx
+*.pt
+*.pth
+*.h5
+*.keras
+*.pb
+*.tflite
+.cache/
+.huggingface/
+models/
+checkpoints/
+.sentence_transformers_cache/
+transformers_cache/
+
+# ============================================
+# Experiment and Test Files
+# ============================================
+# Root level experimental Python files
+*_test.py
+*_demo.py
+test_*.py
+demo_*.py
+showcase_*.py
+advanced_*.py
+enhanced_*.py
+ultimate_*.py
+state_of_art_*.py
+working_*.py
+production_*.py
+*_fixed.py
+*_2025.py
+*_old.py
+*_backup.py
+create_test_*.py
+test_db_*.py
+test_api_*.py
+test_parser_*.py
+ai_hr_*.py
+voice_*.py
+*_ai_hr.py
+*_voice_*.py
+
+# Sample/Test Data
+test_resume_*.pdf
+test_resume_*.txt
+test_resume_*.docx
+sample_*.pdf
+sample_*.docx
+demo_*.pdf
+
+# ============================================
+# Documentation (Keep only README.md)
+# ============================================
+DEMO_GUIDE.md
+VOICE_AI_GUIDE.md
+SETUP_GUIDE.md
+PYTHON_VERSION_FIX.md
+ISSUES_RESOLVED.md
+API_DOCS.md
+DEPLOYMENT.md
+TROUBLESHOOTING.md
+*.draft.md
+notes.md
+TODO.md
+CHANGELOG.md
+docs/
+
+# ============================================
+# Archive and Backup Directories
+# ============================================
+old_experimental_files/
+old_workspace_backup/
+old/
+archive/
+backup/
+
+# ============================================
+# Build Artifacts
+# ============================================
+*.pyc
+*.pyo
+*.pyd
+pip-wheel-metadata/
+*.whl
+
+# ============================================
+# Testing
+# ============================================
+.pytest_cache/
+.coverage
+.coverage.*
+htmlcov/
+.tox/
+.nox/
+.hypothesis/
+*.cover
+*.py,cover
+nosetests.xml
+coverage.xml
+*.coveragerc
+
+# ============================================
+# Jupyter Notebooks
+# ============================================
+.ipynb_checkpoints
+*.ipynb
+
+# ============================================
+# Node.js (if frontend uses npm)
+# ============================================
+node_modules/
+package-lock.json
+yarn.lock
+.npm
+.eslintcache
+
+# ============================================
+# Operating System
+# ============================================
+# Windows
+Thumbs.db
+Thumbs.db:encryptable
+ehthumbs.db
+ehthumbs_vista.db
+*.stackdump
+[Dd]esktop.ini
+$RECYCLE.BIN/
+*.lnk
+
+# macOS
+.DS_Store
+.AppleDouble
+.LSOverride
+._*
+
+# Linux
+*~
+.directory
+.Trash-*
+
+# ============================================
+# Docker
+# ============================================
+docker-compose.override.yml
+.dockerignore
+
+# ============================================
+# Secrets and Credentials
+# ============================================
+*.pem
+*.key
+*.cert
+*.crt
+secrets/
+credentials/
+.aws/
+.gcp/
+
+# ============================================
+# Temporary Files
+# ============================================
+*.tmp
+*.temp
+*.bak
+*.swp
+*.swo
+*~
+
+# ============================================
+# Keep Essential Files
+# ============================================
+# Explicitly keep these files
+!.gitignore
+!README.md
+!backend/requirements.txt
+!setup.py
+
+# Keep directory structure
+!backend/data/resumes/.gitkeep
+!backend/data/vectorstore/.gitkeep
+!frontend/audio_logs/.gitkeep
+!frontend/chat_logs/.gitkeep
+
+# ============================================
+# Project-Specific Exclusions
+# ============================================
+# Exclude all root-level Python files except setup.py
+/*.py
+!setup.py
+
+# Exclude root-level files
+/*.json
+/*.md
+!README.md
+
+# Alembic - keep migrations
+!backend/migrations/
+!backend/migrations/**/*.py
+!backend/migrations/**/*.mako
+
+# Backend test files - keep integration tests
+!backend/test_integration.py
+!backend/tests/
+
+# Configuration - keep sample templates
+config/*.json
+!config/sample_*.json
+!config/interview_questions.json
+!config/app_config.json
+
+# ============================================
+# AI/ML Specific
+# ============================================
+# Downloaded models
+*.safetensors
+*.msgpack
+*.ckpt
+tokenizer_config.json
+special_tokens_map.json
+vocab.txt
+merges.txt
+sentence_bert_config.json
+
+# Training artifacts
+runs/
+experiments/
+wandb/
+mlruns/
+
+# ============================================
+# Large Files
+# ============================================
+# Files over 100MB
+*.tar.gz
+*.zip
+*.7z
+*.rar
+*.iso
+*.dmg
+*.pkg
+*.deb
+*.rpm
+
+# Wheel files
+numpy-*.whl
+scipy-*.whl
+torch-*.whl
+tensorflow-*.whl
+
+# ============================================
+# Codacy and GitHub
+# ============================================
+.github/instructions/
+
+# ============================================
+# End of .gitignore
+# ============================================

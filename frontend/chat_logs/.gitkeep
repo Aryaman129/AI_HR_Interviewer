@@ -1,0 +1,2 @@
+# This file ensures the chat_logs directory is tracked by git
+# Interview transcripts are excluded via .gitignore
