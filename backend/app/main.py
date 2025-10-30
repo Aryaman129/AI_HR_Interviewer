@@ -105,9 +105,9 @@ async def api_info():
     }
 
 
-# Import and include API routers (will be created later)
-# from app.api.v1 import api_router
-# app.include_router(api_router, prefix=settings.API_V1_PREFIX)
+# Import and include API routers
+from app.api.v1.router import api_router
+app.include_router(api_router)
 
 
 if __name__ == "__main__":

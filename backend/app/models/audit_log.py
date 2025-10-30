@@ -36,7 +36,7 @@ class AuditLog(Base):
     #   "fields_changed": ["status"]
     # }
     
-    metadata = Column(JSONB)  # Additional context
+    extra_metadata = Column(JSONB)  # Additional context (renamed from 'metadata' to avoid SQLAlchemy conflict)
     # Example: {
     #   "ip_address": "192.168.1.1",
     #   "user_agent": "Mozilla/5.0...",
@@ -61,7 +61,7 @@ class AuditLog(Base):
     
     @classmethod
     def log_action(cls, session, user_id: int, action: str, entity_type: str, entity_id: int, 
-                   description: str = None, changes: dict = None, metadata: dict = None):
+                   description: str = None, changes: dict = None, extra_metadata: dict = None):
         """Convenience method to create audit log entry"""
         log = cls(
             user_id=user_id,
@@ -70,7 +70,7 @@ class AuditLog(Base):
             entity_id=entity_id,
             description=description,
             changes=changes,
-            metadata=metadata
+            extra_metadata=extra_metadata
         )
         session.add(log)
         return log

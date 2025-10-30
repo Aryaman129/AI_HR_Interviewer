@@ -58,13 +58,13 @@ class Application(Base):
     match_highlights = Column(JSONB)  # ["5 years Python exp", "FastAPI expert"]
     match_gaps = Column(JSONB)  # ["No AWS experience", "Lacks React skills"]
     
-    # Screening Results
-    screening_id = Column(Integer, ForeignKey("screenings.id"))
+    # Screening Results (removed screening_id FK to break circular dependency)
+    # Access screening via relationship: application.screening
     screening_score = Column(Float)  # 0-100 from AI screening
     screening_passed = Column(Integer)  # Boolean as integer
     
-    # Interview Results
-    interview_id = Column(Integer, ForeignKey("interviews.id"))
+    # Interview Results (removed interview_id FK to break circular dependency)
+    # Access interview via relationship: application.interview
     interview_score = Column(Float)  # 0-100 from voice/video interview
     interview_completed = Column(Integer)  # Boolean
     
