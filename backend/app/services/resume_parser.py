@@ -4,6 +4,12 @@ Extracts information from PDF/DOCX resumes using spaCy NER and sentence-transfor
 Generates 384-dimensional embeddings for semantic search.
 """
 
+import os
+# Disable TensorFlow warnings and force CPU-only mode
+os.environ['TF_CPP_MIN_LOG_LEVEL'] = '3'
+os.environ['TF_ENABLE_ONEDNN_OPTS'] = '0'
+os.environ['CUDA_VISIBLE_DEVICES'] = '-1'
+
 import re
 import logging
 from pathlib import Path
@@ -44,8 +50,24 @@ class ResumeParser:
         logger.info("Loading sentence-transformers embedding model...")
         self.embedding_model = SentenceTransformer('sentence-transformers/all-MiniLM-L6-v2')
         
-        logger.info("Loading resume-job matcher model...")
-        self.matching_model = SentenceTransformer('anass1209/resume-job-matcher-all-MiniLM-L6-v2')
+        logger.info("Loading BERT-based NER model (research-backed: 76.3M downloads)...")
+        try:
+            from transformers import AutoTokenizer, AutoModelForTokenClassification, pipeline
+            self.ner_tokenizer = AutoTokenizer.from_pretrained("dslim/bert-base-NER")
+            self.ner_model = AutoModelForTokenClassification.from_pretrained("dslim/bert-base-NER")
+            self.ner_pipeline = pipeline(
+                "ner", 
+                model=self.ner_model, 
+                tokenizer=self.ner_tokenizer, 
+                aggregation_strategy="simple"
+            )
+            logger.info("Advanced BERT-NER model loaded successfully")
+        except Exception as e:
+            logger.warning(f"Could not load BERT-NER model: {e}. Falling back to spaCy only.")
+            self.ner_pipeline = None
+        
+        logger.info("Using sentence-transformers for job matching (replacing non-existent model)...")
+        self.matching_model = self.embedding_model  # Use same model for consistency
         
         logger.info("All models loaded successfully")
         
@@ -113,30 +135,73 @@ class ResumeParser:
         match = re.search(phone_pattern, text)
         return match.group(0) if match else None
     
-    def extract_entities_spacy(self, text: str) -> Dict[str, List[str]]:
-        """Extract named entities using spaCy NER."""
-        doc = self.nlp(text)
-        
+    def extract_entities_advanced(self, text: str) -> Dict[str, List[str]]:
+        """
+        Extract named entities using advanced BERT-based NER + spaCy fallback.
+        Addresses accuracy issues identified in analysis.
+        """
         entities = {
-            'organizations': [],  # Companies worked at
-            'locations': [],
+            'organizations': [],
+            'locations': [], 
             'dates': [],
-            'persons': []  # Might catch candidate name
+            'persons': []
         }
+        
+        # First try advanced BERT-based NER (research finding: dslim/bert-base-NER)
+        if self.ner_pipeline:
+            try:
+                bert_entities = self.ner_pipeline(text)
+                
+                for entity in bert_entities:
+                    entity_type = entity['entity_group']
+                    entity_text = entity['word'].replace('##', '')  # Clean BERT subword tokens
+                    
+                    if entity_type == 'PER' and len(entity_text.split()) <= 3:  # Likely person name
+                        entities['persons'].append(entity_text)
+                    elif entity_type == 'ORG':
+                        # Filter out common false positives for companies
+                        if entity_text.lower() not in ['django', 'react', 'python', 'java', 'sql']:
+                            entities['organizations'].append(entity_text)
+                    elif entity_type == 'LOC':
+                        entities['locations'].append(entity_text)
+                
+                logger.info(f"BERT-NER extracted: {len(entities['persons'])} persons, {len(entities['organizations'])} orgs")
+                
+            except Exception as e:
+                logger.warning(f"BERT-NER failed: {e}. Using spaCy fallback.")
+        
+        # Fallback to spaCy or supplement BERT results
+        doc = self.nlp(text)
         
         for ent in doc.ents:
             if ent.label_ == 'ORG':
-                entities['organizations'].append(ent.text)
-            elif ent.label_ in ['GPE', 'LOC']:  # Geographic/Location
+                # Apply same filtering to avoid Django/framework confusion
+                if ent.text.lower() not in ['django', 'react', 'python', 'java', 'sql', 'node.js']:
+                    entities['organizations'].append(ent.text)
+            elif ent.label_ in ['GPE', 'LOC']:
                 entities['locations'].append(ent.text)
             elif ent.label_ == 'DATE':
                 entities['dates'].append(ent.text)
             elif ent.label_ == 'PERSON':
-                entities['persons'].append(ent.text)
+                # Prefer names from the beginning of the resume
+                if len(ent.text.split()) <= 3:  # Reasonable name length
+                    entities['persons'].append(ent.text)
         
-        # Deduplicate
+        # Deduplicate and prioritize
         for key in entities:
-            entities[key] = list(set(entities[key]))
+            entities[key] = list(dict.fromkeys(entities[key]))  # Preserve order while deduplicating
+        
+        # For person names, prioritize those appearing early in the document
+        if entities['persons']:
+            # Sort by position in text (earlier = more likely to be the candidate's name)
+            person_positions = []
+            for person in entities['persons']:
+                pos = text.find(person)
+                if pos != -1:
+                    person_positions.append((pos, person))
+            
+            person_positions.sort()  # Sort by position
+            entities['persons'] = [person for pos, person in person_positions]
         
         return entities
     
@@ -244,8 +309,8 @@ class ResumeParser:
         email = self.extract_email(text)
         phone = self.extract_phone(text)
         
-        # 3. NER extraction
-        entities = self.extract_entities_spacy(text)
+        # 3. Advanced NER extraction (using improved method)
+        entities = self.extract_entities_advanced(text)
         
         # 4. Skills extraction
         skills_dict = self.extract_skills(text)

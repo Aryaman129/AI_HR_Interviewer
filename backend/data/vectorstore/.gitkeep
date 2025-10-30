@@ -1,0 +1,2 @@
+# This file ensures the vectorstore directory is tracked by git
+# Vector embeddings and indices are excluded via .gitignore

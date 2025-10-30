@@ -6,8 +6,17 @@ from sqlalchemy import Column, String, Integer, DateTime, Text, ForeignKey, Floa
 from sqlalchemy.dialects.postgresql import JSONB
 from sqlalchemy.orm import relationship
 from datetime import datetime
+from enum import Enum
 
 from app.db.database import Base
+
+
+class ScreeningStatus(str, Enum):
+    """Screening status enumeration"""
+    PENDING = "pending"
+    IN_PROGRESS = "in_progress"
+    COMPLETED = "completed"
+    EXPIRED = "expired"
 
 
 class Screening(Base):
