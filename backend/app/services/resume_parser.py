@@ -13,7 +13,7 @@ os.environ['CUDA_VISIBLE_DEVICES'] = '-1'
 import re
 import logging
 from pathlib import Path
-from typing import Dict, List, Optional, Tuple
+from typing import Dict, List, Optional, Tuple, Any
 from datetime import datetime
 
 # PDF/DOCX extraction
@@ -355,15 +355,36 @@ class ResumeParser:
 
 
 # Singleton instance (lazy-loaded)
-_parser_instance: Optional[ResumeParser] = None
+_parser_instance: Optional[Any] = None
 
 
-def get_resume_parser() -> ResumeParser:
+def get_resume_parser() -> Any:
     """
-    Get singleton instance of ResumeParser.
-    Models are loaded only once on first call.
+    Get singleton parser instance. Prefer LLM-based parser when enabled in settings;
+    falls back to the local spaCy-based ResumeParser if LLM parser cannot be initialized.
     """
     global _parser_instance
-    if _parser_instance is None:
-        _parser_instance = ResumeParser()
+    if _parser_instance is not None:
+        return _parser_instance
+
+    # Lazy import settings to avoid heavy startup cost if unused
+    try:
+        from app.core.config import settings
+        if getattr(settings, "USE_LLM_RESUME_PARSER", False):
+            try:
+                from app.services.llm_resume_parser import LLMResumeParser
+
+                logger.info("Initializing LLM-based resume parser (OLLAMA)")
+                _parser_instance = LLMResumeParser()
+                return _parser_instance
+            except Exception as e:
+                logger.warning(
+                    "Failed to initialize LLMResumeParser: %s. Falling back to local ResumeParser.", e
+                )
+    except Exception:
+        # If settings import fails, continue to fallback
+        logger.debug("Could not import settings; using local ResumeParser")
+
+    # Fallback to original parser
+    _parser_instance = ResumeParser()
     return _parser_instance

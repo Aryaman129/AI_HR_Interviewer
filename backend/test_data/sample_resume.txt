@@ -1,0 +1,63 @@
+SARAH JOHNSON
+Email: sarah.johnson@email.com
+Phone: +1-415-555-0123
+Location: San Francisco, CA
+
+PROFESSIONAL SUMMARY
+Senior Software Engineer with 8 years of experience in full-stack development, specializing in Python, JavaScript, and cloud technologies. Proven track record of building scalable web applications and leading development teams.
+
+TECHNICAL SKILLS
+Languages: Python, JavaScript, TypeScript, SQL, HTML/CSS
+Frameworks: Django, FastAPI, React, Node.js, Express
+Databases: PostgreSQL, MongoDB, Redis
+Cloud & DevOps: AWS, Docker, Kubernetes, CI/CD, Git
+Tools: Jira, Slack, VS Code, Postman
+
+SOFT SKILLS
+Leadership, Communication, Problem Solving, Team Collaboration, Agile Methodologies
+
+WORK EXPERIENCE
+
+Senior Software Engineer
+TechCorp Inc., San Francisco, CA
+June 2020 - Present
+• Led development of microservices architecture serving 2M+ users
+• Implemented CI/CD pipeline reducing deployment time by 60%
+• Mentored team of 5 junior developers
+• Built RESTful APIs using FastAPI and PostgreSQL
+
+Software Engineer
+StartupXYZ, Palo Alto, CA
+January 2018 - May 2020
+• Developed full-stack web applications using React and Django
+• Optimized database queries improving performance by 40%
+• Collaborated with product team on feature development
+• Implemented automated testing framework
+
+Junior Developer
+WebSolutions LLC, San Jose, CA
+July 2016 - December 2017
+• Built responsive web interfaces using HTML, CSS, JavaScript
+• Worked on bug fixes and feature enhancements
+• Participated in code reviews and agile ceremonies
+
+EDUCATION
+
+Bachelor of Science in Computer Science
+Stanford University, Stanford, CA
+September 2012 - June 2016
+GPA: 3.8/4.0
+Relevant Coursework: Data Structures, Algorithms, Database Systems, Web Development
+
+CERTIFICATIONS
+• AWS Certified Solutions Architect - Associate (2022)
+• Certified Scrum Master (CSM) (2021)
+
+LANGUAGES
+• English (Native)
+• Spanish (Professional Working Proficiency)
+
+PROJECTS
+• Open-source contributor to Django REST Framework
+• Built personal portfolio website with Next.js and deployed on Vercel
+• Created Python automation scripts for data processing

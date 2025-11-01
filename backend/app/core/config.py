@@ -58,8 +58,13 @@ class Settings(BaseSettings):
     # AI Services
     OLLAMA_HOST: str = "http://localhost:11434"
     OLLAMA_MODEL: str = "llama3.1:8b"
+    OLLAMA_API_KEY: Optional[str] = None  # For Ollama Cloud (set in environment, do NOT commit secrets)
+    # Ollama Cloud host (used when OLLAMA_API_KEY is provided). Examples: https://ollama.com
+    OLLAMA_CLOUD_URL: str = "https://ollama.com"
     SPACY_MODEL: str = "en_core_web_lg"
     SENTENCE_TRANSFORMER_MODEL: str = "sentence-transformers/all-MiniLM-L6-v2"
+    # Toggle whether to use the LLM-based resume parser (when True) or the local spaCy parser
+    USE_LLM_RESUME_PARSER: bool = True
     WHISPER_MODEL: str = "base"  # base, small, medium, large
     
     # Storage (Cloudflare R2)
