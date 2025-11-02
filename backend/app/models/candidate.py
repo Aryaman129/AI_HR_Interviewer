@@ -2,7 +2,7 @@
 Candidate Model
 Stores candidate information with resume embeddings for semantic search
 """
-from sqlalchemy import Column, String, Integer, DateTime, Text, Enum as SQLEnum, Boolean
+from sqlalchemy import Column, String, Integer, DateTime, Text, Enum as SQLEnum, Boolean, ForeignKey
 from sqlalchemy.dialects.postgresql import JSONB
 from sqlalchemy.orm import relationship
 from pgvector.sqlalchemy import Vector
@@ -29,6 +29,7 @@ class Candidate(Base):
     
     # Primary Fields
     id = Column(Integer, primary_key=True, index=True)
+    organization_id = Column(Integer, ForeignKey("organizations.id", ondelete="CASCADE"), nullable=True, index=True)
     email = Column(String(255), unique=True, index=True, nullable=False)
     phone = Column(String(20), index=True)
     full_name = Column(String(255), nullable=False)
@@ -47,9 +48,9 @@ class Candidate(Base):
     linkedin_url = Column(String(500))
     portfolio_url = Column(String(500))
     
-    # AI/ML - Vector Embeddings (384 dimensions for all-MiniLM-L6-v2)
-    resume_embedding = Column(Vector(384))  # pgvector column for semantic search
-    skills_embedding = Column(Vector(384))  # Separate embedding for skills
+    # AI/ML - Vector Embeddings (768 dimensions for JobBERT-v3)
+    resume_embedding = Column(Vector(768))  # pgvector column for semantic search
+    skills_embedding = Column(Vector(768))  # Separate embedding for skills
     
     # Extracted Information (from AI resume parser)
     skills = Column(JSONB)  # {"technical": [...], "soft": [...]}
@@ -74,6 +75,7 @@ class Candidate(Base):
     last_activity_at = Column(DateTime)
     
     # Relationships
+    organization = relationship("Organization", back_populates="candidates")
     resumes = relationship("Resume", back_populates="candidate", cascade="all, delete-orphan")
     applications = relationship("Application", back_populates="candidate", cascade="all, delete-orphan")
     interviews = relationship("Interview", back_populates="candidate", cascade="all, delete-orphan")

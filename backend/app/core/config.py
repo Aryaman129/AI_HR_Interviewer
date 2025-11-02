@@ -61,6 +61,11 @@ class Settings(BaseSettings):
     OLLAMA_API_KEY: Optional[str] = None  # For Ollama Cloud (set in environment, do NOT commit secrets)
     # Ollama Cloud host (used when OLLAMA_API_KEY is provided). Examples: https://ollama.com
     OLLAMA_CLOUD_URL: str = "https://ollama.com"
+    
+    # Google Gemini (Fallback LLM)
+    GOOGLE_API_KEY: Optional[str] = None  # For Gemini API
+    GEMINI_MODEL: str = "gemini-2.5-flash"  # gemini-2.5-flash, gemini-2.5-pro, gemini-2.0-flash
+    
     SPACY_MODEL: str = "en_core_web_lg"
     SENTENCE_TRANSFORMER_MODEL: str = "sentence-transformers/all-MiniLM-L6-v2"
     # Toggle whether to use the LLM-based resume parser (when True) or the local spaCy parser

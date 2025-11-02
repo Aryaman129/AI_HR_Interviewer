@@ -2,7 +2,7 @@
 User Model
 HR users, hiring managers, and administrators
 """
-from sqlalchemy import Column, String, Integer, DateTime, Boolean, Enum as SQLEnum
+from sqlalchemy import Column, String, Integer, DateTime, Boolean, Enum as SQLEnum, ForeignKey
 from sqlalchemy.dialects.postgresql import JSONB
 from sqlalchemy.orm import relationship
 from datetime import datetime
@@ -41,7 +41,9 @@ class User(Base):
     is_verified = Column(Boolean, default=False)
     email_verified_at = Column(DateTime)
     
-    # Organization
+    # Organization (Multi-tenancy)
+    organization_id = Column(Integer, ForeignKey("organizations.id", ondelete="CASCADE"), nullable=True, index=True)
+    # Legacy fields (deprecated in favor of organization relationship)
     company_name = Column(String(255))
     company_size = Column(String(50))  # "1-10", "11-50", "51-200", etc.
     industry = Column(String(100))
@@ -71,6 +73,7 @@ class User(Base):
     deleted_at = Column(DateTime)  # Soft delete
     
     # Relationships
+    organization = relationship("Organization", back_populates="users")
     jobs_created = relationship("Job", foreign_keys="Job.created_by", back_populates="created_by_user")
     jobs_managed = relationship("Job", foreign_keys="Job.hiring_manager_id", back_populates="hiring_manager")
     feedbacks_given = relationship("Feedback", back_populates="reviewer")

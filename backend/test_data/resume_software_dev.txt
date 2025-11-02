@@ -1,0 +1,52 @@
+RAHUL SHARMA
+Email: rahul.sharma@email.com
+Phone: +91-9876543210
+Location: Bangalore, India
+
+PROFESSIONAL SUMMARY
+Senior Software Developer with 6 years of experience in full-stack development. Expert in React, Python, and cloud technologies. Proven track record of delivering scalable web applications.
+
+EXPERIENCE
+
+Senior Software Developer | Tech Solutions Pvt Ltd | Bangalore
+June 2020 - Present (3.5 years)
+- Led development of microservices architecture using Python FastAPI and React
+- Implemented CI/CD pipelines reducing deployment time by 60%
+- Mentored team of 5 junior developers
+- Technologies: Python, React, TypeScript, AWS, Docker, PostgreSQL
+
+Software Developer | InnovateTech | Bangalore  
+July 2018 - May 2020 (2 years)
+- Developed RESTful APIs using Django and Flask
+- Built responsive frontend applications with React and Redux
+- Implemented authentication and authorization systems
+- Technologies: Python, Django, React, MySQL, Redis
+
+Junior Developer | StartupXYZ | Mumbai
+Jan 2017 - June 2018 (1.5 years)
+- Developed web applications using Python and JavaScript
+- Collaborated with cross-functional teams
+- Technologies: Python, JavaScript, HTML, CSS, Git
+
+EDUCATION
+
+Bachelor of Technology in Computer Science
+Indian Institute of Technology, Delhi
+2013 - 2017 | CGPA: 8.5/10
+
+TECHNICAL SKILLS
+- Languages: Python, JavaScript, TypeScript, SQL
+- Frontend: React, Redux, Next.js, HTML5, CSS3, Tailwind
+- Backend: FastAPI, Django, Flask, Node.js, Express
+- Databases: PostgreSQL, MySQL, MongoDB, Redis
+- Cloud: AWS (EC2, S3, Lambda), Docker, Kubernetes
+- Tools: Git, GitHub, Jenkins, Jira, VS Code
+
+CERTIFICATIONS
+- AWS Certified Developer Associate (2022)
+- MongoDB Certified Developer (2021)
+
+ACHIEVEMENTS
+- Won internal hackathon for building AI-powered chatbot (2022)
+- Increased application performance by 40% through optimization
+- Published 2 technical blogs on Medium with 10K+ views

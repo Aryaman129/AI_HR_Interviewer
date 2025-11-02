@@ -29,21 +29,27 @@ def create_job(
     Create a new job posting with automatic vector embedding generation
     """
     try:
-        # Create job record
+        # Parse requirements string into list if provided
+        requirements_list = []
+        if job_data.requirements:
+            # Split by newlines or periods to create list
+            requirements_list = [req.strip() for req in job_data.requirements.replace('\n', '.').split('.') if req.strip()]
+        
+        # Create job record - Map schema fields to model fields
         db_job = Job(
             title=job_data.title,
-            company=job_data.company,
+            company_name=job_data.company,  # Schema: company → Model: company_name
             description=job_data.description,
-            requirements=job_data.requirements,
+            requirements=requirements_list,  # Schema: str → Model: JSONB array
             location=job_data.location,
             salary_min=job_data.salary_min,
             salary_max=job_data.salary_max,
-            employment_type=job_data.employment_type,
-            remote_option=job_data.remote_option,
-            experience_level=job_data.experience_level,
-            skills_required=job_data.skills_required,
+            job_type=job_data.employment_type.value if hasattr(job_data.employment_type, 'value') else job_data.employment_type,  # Schema: employment_type → Model: job_type
+            is_remote=job_data.remote_option,  # Schema: remote_option → Model: is_remote
+            experience_level=job_data.experience_level.value if hasattr(job_data.experience_level, 'value') else job_data.experience_level,
+            required_skills=job_data.skills_required,  # Schema: skills_required → Model: required_skills
             department=job_data.department,
-            is_active=True
+            status="active"  # Set status to active by default
         )
         
         # Generate embeddings for semantic search

@@ -1,0 +1,46 @@
+AMIT KUMAR
+Email: amit.kumar@email.com
+Phone: +91-9988776655
+Location: Delhi, India
+
+PROFESSIONAL SUMMARY
+Recent graduate with Bachelor's degree in Computer Applications seeking entry-level position in software development. Eager to learn and contribute to a dynamic team.
+
+EXPERIENCE
+
+Intern - Web Development | TechStart Solutions | Delhi
+June 2024 - August 2024 (3 months)
+- Assisted in developing company website using HTML, CSS, and JavaScript
+- Fixed minor bugs in existing web applications
+- Participated in daily stand-up meetings
+- Technologies: HTML, CSS, JavaScript, jQuery
+
+College Project - E-commerce Website
+January 2024 - May 2024
+- Built a simple online shopping website as final year project
+- Implemented basic CRUD operations
+- Technologies: PHP, MySQL, Bootstrap
+
+EDUCATION
+
+Bachelor of Computer Applications (BCA)
+Delhi University
+2021 - 2024 | Percentage: 72%
+
+Class 12th - Commerce Stream
+2020 - 2021 | Percentage: 68%
+
+SKILLS
+- Programming: Basic Python, JavaScript, Java
+- Web Technologies: HTML, CSS, Bootstrap, jQuery
+- Database: MySQL (basic)
+- Tools: Git (beginner), VS Code
+- Languages: Hindi (Native), English (Intermediate)
+
+CERTIFICATIONS
+- Introduction to Python (Coursera, 2023)
+- Web Development Bootcamp (Udemy, 2024)
+
+ACHIEVEMENTS
+- Secured 2nd position in college coding competition
+- Completed 5 online courses on web development

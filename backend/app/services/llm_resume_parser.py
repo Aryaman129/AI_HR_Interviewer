@@ -1,8 +1,7 @@
 """
 LLM-based Resume Parser
-Uses local Ollama (configurable via settings) to parse resume text into structured JSON.
-Validates the returned JSON using Pydantic schemas and generates embeddings using
-sentence-transformers when embeddings are not provided by the LLM.
+Uses Multi-Provider LLM (Ollama Cloud + Google Gemini) to parse resume text into structured JSON.
+Validates the returned JSON using Pydantic schemas and generates 768-dim embeddings using JobBERT-v3.
 """
 import json
 import logging
@@ -10,41 +9,25 @@ import re
 from pathlib import Path
 from typing import Any, Dict, Optional
 
-import httpx
 from datetime import datetime
-import numpy as np  # kept for typing/usage; import moved into __init__ if necessary
+import numpy as np
 
 from app.core.config import settings
 from app.schemas.resume_schema import ResumeParseResult
+from app.services.llm_provider import get_llm_service, LLMOptions
+from app.services.embedding_service import get_embedding_service
 
 logger = logging.getLogger(__name__)
 
 
 class LLMResumeParser:
-    """Parser that uses a local Ollama model to produce structured JSON from resumes."""
+    """Parser that uses Multi-Provider LLM to produce structured JSON from resumes."""
 
     def __init__(self):
-        self.ollama_host = settings.OLLAMA_HOST
-        self.ollama_cloud_url = settings.OLLAMA_CLOUD_URL
-        self.ollama_api_key = settings.OLLAMA_API_KEY
-        self.model = settings.OLLAMA_MODEL
-        self.embedding_model_name = settings.SENTENCE_TRANSFORMER_MODEL
-        self.use_cloud = bool(self.ollama_api_key)  # Use cloud if API key is set
-
-        logger.info("Loading sentence-transformers model for embeddings: %s", self.embedding_model_name)
-        if self.use_cloud:
-            logger.info("Using Ollama Cloud API with model: %s", self.model)
-        else:
-            logger.info("Using local Ollama at %s with model: %s", self.ollama_host, self.model)
+        self.llm_service = get_llm_service()
+        self.embedding_service = get_embedding_service()
         
-        try:
-            # Lazy import heavy dependency
-            from sentence_transformers import SentenceTransformer
-
-            self.embedding_model = SentenceTransformer(self.embedding_model_name)
-        except Exception as e:
-            logger.error("Failed to load embedding model: %s", e)
-            raise
+        logger.info("LLM Resume Parser initialized with multi-provider LLM and JobBERT-v3 (768-dim)")
 
     def _extract_text_from_pdf(self, file_path: str) -> str:
         try:
@@ -84,10 +67,18 @@ class LLMResumeParser:
         else:
             raise ValueError(f"Unsupported file type: {ext}")
 
-    def generate_embeddings(self, text: str) -> (np.ndarray, np.ndarray):
-        """Return (resume_embedding, skills_embedding) as numpy arrays."""
-        resume_emb = self.embedding_model.encode(text, convert_to_numpy=True)
-        skills_emb = self.embedding_model.encode(text, convert_to_numpy=True)
+    def generate_embeddings(self, text: str) -> tuple[np.ndarray, np.ndarray]:
+        """
+        Generate 768-dim embeddings using JobBERT-v3.
+        Returns (resume_embedding, skills_embedding) as numpy arrays.
+        """
+        resume_emb_list = self.embedding_service.generate_text_embedding(text)
+        skills_emb_list = self.embedding_service.generate_text_embedding(text)
+        
+        # Convert lists to numpy arrays
+        resume_emb = np.array(resume_emb_list)
+        skills_emb = np.array(skills_emb_list)
+        
         return resume_emb, skills_emb
 
     def _build_prompt(self, text: str) -> str:
@@ -130,8 +121,11 @@ Resume Text:
         prompt += "\n\nReturn the JSON now.\n"
         return prompt
 
-    def parse(self, file_path: str) -> Dict[str, Any]:
-        """Parse a resume file and return a validated dict matching ResumeParseResult."""
+    async def parse(self, file_path: str) -> Dict[str, Any]:
+        """
+        Parse a resume file and return a validated dict matching ResumeParseResult.
+        Uses Multi-Provider LLM with automatic failover.
+        """
         logger.info("LLMResumeParser.parse called for %s", file_path)
 
         text = self._extract_text(file_path)
@@ -141,68 +135,21 @@ Resume Text:
         prompt = self._build_prompt(text)
 
         try:
-            # Build generate endpoint & headers for local/cloud
-            if self.use_cloud:
-                # If cloud URL already contains an API path (e.g., /api/ or /v1/...), use it as-is.
-                base = self.ollama_cloud_url.rstrip('/')
-                if any(p in base for p in ['/api', '/v1', '/generate', '/completions', '/tags']):
-                    generate_url = base
-                else:
-                    generate_url = f"{base}/api/generate"
-                headers = {
-                    "Authorization": f"Bearer {self.ollama_api_key}",
-                    "Content-Type": "application/json",
-                }
-            else:
-                generate_url = f"{self.ollama_host.rstrip('/')}/api/generate"
-                headers = None
-
-            with httpx.Client(timeout=60.0, headers=headers) as client:
-                response = client.post(
-                    generate_url,
-                    json={
-                        "model": self.model,
-                        "prompt": prompt,
-                        "stream": False,
-                        "options": {"temperature": 0.1, "num_predict": 1500}
-                    },
-                )
-
-            if response.status_code != 200:
-                # Include body for diagnostics (do not log API keys)
-                body = None
-                try:
-                    body = response.text
-                except Exception:
-                    body = "<unavailable>"
-                logger.error("Ollama responded with status %s: %s", response.status_code, body)
-                raise RuntimeError(f"Ollama API error: {response.status_code} - {body}")
-
-            result = response.json()
-
-            # Try a few common response shapes to extract the assistant text
-            response_text = ""
-            if isinstance(result, dict):
-                # Local Ollama style
-                response_text = result.get("response") or ""
-                # Ollama Cloud / OpenAI-style
-                if not response_text:
-                    # SDK-like message
-                    msg = result.get("message")
-                    if isinstance(msg, dict):
-                        response_text = msg.get("content", "")
-                if not response_text:
-                    # openai-style choices
-                    choices = result.get("choices")
-                    if isinstance(choices, list) and len(choices) > 0:
-                        first = choices[0]
-                        if isinstance(first, dict):
-                            # nested message content
-                            response_text = (first.get("message", {}) or {}).get("content") or first.get("text") or ""
-            elif isinstance(result, str):
-                response_text = result
-            else:
-                response_text = str(result)
+            # Use Multi-Provider LLM service with automatic failover
+            options = LLMOptions(
+                temperature=0.1,
+                max_tokens=1500,
+                response_format="json"
+            )
+            
+            llm_response = await self.llm_service.generate(prompt, options)
+            
+            if not llm_response or not llm_response.content:
+                raise ValueError("Empty response from LLM")
+            
+            logger.info(f"Resume parsed using {llm_response.provider}")
+            
+            response_text = llm_response.content
 
             # Extract JSON substring
             start = response_text.find('{')
@@ -230,17 +177,18 @@ Resume Text:
 
             parsed_data = validated.model_dump()
 
-            # If embeddings missing, compute them
+            # Generate 768-dim JobBERT-v3 embeddings if missing
             if not parsed_data.get('resume_embedding'):
                 resume_emb, skills_emb = self.generate_embeddings(parsed_data.get('raw_text', text))
                 parsed_data['resume_embedding'] = resume_emb.tolist()
                 parsed_data['skills_embedding'] = skills_emb.tolist()
 
+            logger.info(f"Resume parsed successfully with 768-dim embeddings (provider: {llm_response.provider})")
             return parsed_data
 
         except Exception as e:
             logger.error("LLM parser failed: %s", e, exc_info=True)
-            # As a minimal fallback, try to return basic contact extraction and embeddings
+            # Fallback: return basic contact extraction and embeddings
             fallback = {
                 'email': None,
                 'phone': None,
@@ -272,4 +220,5 @@ Resume Text:
                 fallback['resume_embedding'] = None
                 fallback['skills_embedding'] = None
 
+            logger.warning("Returning fallback resume parse with basic info")
             return fallback

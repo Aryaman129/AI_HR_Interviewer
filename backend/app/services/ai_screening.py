@@ -1,14 +1,13 @@
 """
 AI Screening Service
-Generates interview questions and evaluates responses using Ollama
-Based on research from AI interview systems on HuggingFace
+Generates interview questions and evaluates responses using Multi-Provider LLM
+Supports Ollama Cloud and Google Gemini with automatic failover
 """
 
 import json
 import logging
 from typing import List, Dict, Any, Optional
 import asyncio
-import aiohttp
 from datetime import datetime
 from enum import Enum
 
@@ -16,7 +15,8 @@ from sqlalchemy.orm import Session
 from app.core.config import settings
 from app.models.job import Job
 from app.models.candidate import Candidate
-from app.models.screening import Screening, ScreeningStatus
+from app.models.screening import Screening, ScreeningStatus, SessionState
+from app.services.llm_provider import get_llm_service, LLMOptions
 
 logger = logging.getLogger(__name__)
 
@@ -34,13 +34,12 @@ class DifficultyLevel(str, Enum):
 
 class AIScreeningService:
     """
-    AI-powered screening service using Ollama
-    Generates contextual questions and evaluates responses
+    AI-powered screening service using Multi-Provider LLM
+    Supports automatic failover between Ollama Cloud and Google Gemini
     """
     
     def __init__(self):
-        self.ollama_host = settings.OLLAMA_HOST
-        self.model = settings.OLLAMA_MODEL
+        self.llm_service = get_llm_service()
         self.session_timeout = 300  # 5 minutes
         
     async def generate_screening_questions(
@@ -256,50 +255,45 @@ class AIScreeningService:
         """
         
         try:
-            async with aiohttp.ClientSession() as session:
-                async with session.post(
-                    f"{self.ollama_host}/api/generate",
-                    json={
-                        "model": self.model,
-                        "prompt": prompt,
-                        "stream": False,
-                        "options": {
-                            "temperature": 0.7,
-                            "num_predict": 2000
-                        }
-                    },
-                    timeout=aiohttp.ClientTimeout(total=60)
-                ) as response:
-                    if response.status == 200:
-                        result = await response.json()
-                        response_text = result.get("response", "")
-                        
-                        # Parse JSON from response
-                        try:
-                            # Extract JSON from response (sometimes Ollama adds extra text)
-                            start = response_text.find('{')
-                            end = response_text.rfind('}') + 1
-                            json_str = response_text[start:end]
-                            
-                            questions_data = json.loads(json_str)
-                            questions = questions_data.get("questions", [])
-                            
-                            # Add IDs if missing
-                            for i, q in enumerate(questions):
-                                if "id" not in q:
-                                    q["id"] = f"q{i+1}"
-                            
-                            return questions[:num_questions]
-                            
-                        except json.JSONDecodeError as e:
-                            logger.error(f"Failed to parse JSON from Ollama: {e}")
-                            return self._generate_fallback_questions(context, num_questions)
-                    else:
-                        logger.error(f"Ollama API error: {response.status}")
-                        return self._generate_fallback_questions(context, num_questions)
+            # Use LLM service with JSON response format
+            options = LLMOptions(
+                temperature=0.7,
+                max_tokens=2000,
+                response_format="json"
+            )
+            
+            llm_response = await self.llm_service.generate(prompt, options)
+            
+            if llm_response and llm_response.content:
+                response_text = llm_response.content
+                logger.info(f"Generated questions using {llm_response.provider}")
+                
+                # Parse JSON from response
+                try:
+                    # Extract JSON from response (sometimes LLMs add extra text)
+                    start = response_text.find('{')
+                    end = response_text.rfind('}') + 1
+                    json_str = response_text[start:end]
+                    
+                    questions_data = json.loads(json_str)
+                    questions = questions_data.get("questions", [])
+                    
+                    # Add IDs if missing
+                    for i, q in enumerate(questions):
+                        if "id" not in q:
+                            q["id"] = f"q{i+1}"
+                    
+                    return questions[:num_questions]
+                    
+                except json.JSONDecodeError as e:
+                    logger.error(f"Failed to parse JSON from LLM: {e}")
+                    return self._generate_fallback_questions(context, num_questions)
+            else:
+                logger.error(f"LLM service returned empty response")
+                return self._generate_fallback_questions(context, num_questions)
                         
         except Exception as e:
-            logger.error(f"Error calling Ollama: {e}")
+            logger.error(f"Error calling LLM service: {e}")
             return self._generate_fallback_questions(context, num_questions)
     
     async def _evaluate_response_with_ollama(
@@ -309,7 +303,7 @@ class AIScreeningService:
         screening: Screening
     ) -> Dict[str, Any]:
         """
-        Evaluate response using Ollama
+        Evaluate response using Multi-Provider LLM
         """
         prompt = f"""
         You are an expert HR interviewer evaluating a candidate's response. Provide a detailed evaluation.
@@ -337,65 +331,71 @@ class AIScreeningService:
         """
         
         try:
-            async with aiohttp.ClientSession() as session:
-                async with session.post(
-                    f"{self.ollama_host}/api/generate",
-                    json={
-                        "model": self.model,
-                        "prompt": prompt,
-                        "stream": False,
-                        "options": {
-                            "temperature": 0.3,  # Lower temperature for more consistent scoring
-                            "num_predict": 1000
-                        }
-                    },
-                    timeout=aiohttp.ClientTimeout(total=45)
-                ) as ollama_response:
-                    if ollama_response.status == 200:
-                        result = await ollama_response.json()
-                        response_text = result.get("response", "")
-                        
-                        try:
-                            # Extract and parse JSON
-                            start = response_text.find('{')
-                            end = response_text.rfind('}') + 1
-                            json_str = response_text[start:end]
-                            
-                            evaluation = json.loads(json_str)
-                            
-                            # Ensure score is within bounds
-                            max_score = question.get('max_score', 10)
-                            evaluation['score'] = min(max_score, max(0, evaluation.get('score', 0)))
-                            
-                            return evaluation
-                            
-                        except json.JSONDecodeError:
-                            logger.error("Failed to parse evaluation JSON from Ollama")
-                            return self._generate_fallback_evaluation(response, question)
-                    else:
-                        logger.error(f"Ollama evaluation error: {ollama_response.status}")
-                        return self._generate_fallback_evaluation(response, question)
+            # Use LLM service with lower temperature for consistent scoring
+            options = LLMOptions(
+                temperature=0.3,
+                max_tokens=1000,
+                response_format="json"
+            )
+            
+            llm_response = await self.llm_service.generate(prompt, options)
+            
+            if llm_response and llm_response.content:
+                response_text = llm_response.content
+                logger.info(f"Evaluated response using {llm_response.provider}")
+                
+                try:
+                    # Extract and parse JSON
+                    start = response_text.find('{')
+                    end = response_text.rfind('}') + 1
+                    json_str = response_text[start:end]
+                    
+                    evaluation = json.loads(json_str)
+                    
+                    # Ensure score is within bounds
+                    max_score = question.get('max_score', 10)
+                    evaluation['score'] = min(max_score, max(0, evaluation.get('score', 0)))
+                    
+                    return evaluation
+                    
+                except json.JSONDecodeError:
+                    logger.error("Failed to parse evaluation JSON from LLM")
+                    return self._generate_fallback_evaluation(response, question)
+            else:
+                logger.error("LLM service returned empty response")
+                return self._generate_fallback_evaluation(response, question)
                         
         except Exception as e:
-            logger.error(f"Error evaluating with Ollama: {e}")
+            logger.error(f"Error evaluating with LLM service: {e}")
             return self._generate_fallback_evaluation(response, question)
     
     def _generate_fallback_questions(self, context: Dict[str, Any], num_questions: int) -> List[Dict[str, Any]]:
         """
-        Generate fallback questions when Ollama is unavailable
+        Generate fallback questions when LLM is unavailable
         """
-        return [
-            {
+        candidate_skills = context.get('candidate', {}).get('skills', [])
+        
+        questions = []
+        for i in range(min(num_questions, 5)):
+            if i < len(candidate_skills):
+                skill = candidate_skills[i]
+                question_text = f"Tell me about your experience with {skill}."
+                expected_skills = [skill]
+            else:
+                question_text = "Describe a challenging project you worked on."
+                expected_skills = ["problem-solving"]
+            
+            questions.append({
                 "id": f"q{i+1}",
                 "type": "general",
-                "question": f"Tell me about your experience with {skill}." if i < len(context['candidate']['skills']) else "Describe a challenging project you worked on.",
-                "expected_skills": [context['candidate']['skills'][i]] if i < len(context['candidate']['skills']) else ["problem-solving"],
+                "question": question_text,
+                "expected_skills": expected_skills,
                 "evaluation_criteria": "Clear explanation with specific examples",
                 "difficulty": "mid",
                 "max_score": 10
-            }
-            for i in range(min(num_questions, 5))
-        ]
+            })
+        
+        return questions
     
     def _generate_fallback_evaluation(self, response: str, question: Dict[str, Any]) -> Dict[str, Any]:
         """
@@ -467,7 +467,7 @@ class AIScreeningService:
         candidate: Candidate
     ) -> str:
         """
-        Generate AI-powered screening summary
+        Generate AI-powered screening summary using Multi-Provider LLM
         """
         prompt = f"""
         Generate a concise screening summary for this candidate:
@@ -488,25 +488,19 @@ class AIScreeningService:
         """
         
         try:
-            async with aiohttp.ClientSession() as session:
-                async with session.post(
-                    f"{self.ollama_host}/api/generate",
-                    json={
-                        "model": self.model,
-                        "prompt": prompt,
-                        "stream": False,
-                        "options": {
-                            "temperature": 0.5,
-                            "num_predict": 300
-                        }
-                    },
-                    timeout=aiohttp.ClientTimeout(total=30)
-                ) as response:
-                    if response.status == 200:
-                        result = await response.json()
-                        return result.get("response", "").strip()
-                    else:
-                        return "AI summary unavailable. Manual review recommended."
+            # Use LLM service for summary generation
+            options = LLMOptions(
+                temperature=0.5,
+                max_tokens=300
+            )
+            
+            llm_response = await self.llm_service.generate(prompt, options)
+            
+            if llm_response and llm_response.content:
+                logger.info(f"Generated summary using {llm_response.provider}")
+                return llm_response.content.strip()
+            else:
+                return "AI summary unavailable. Manual review recommended."
                         
         except Exception as e:
             logger.error(f"Error generating summary: {e}")
@@ -524,6 +518,260 @@ class AIScreeningService:
             formatted.append(f"Q{i+1} (Score: {score}/10): {feedback[:100]}...")
         
         return "\n".join(formatted)
+    
+    # ============================================================
+    # SESSION MANAGEMENT METHODS (NEW)
+    # ============================================================
+    
+    async def pause_screening(
+        self,
+        screening_id: int,
+        db: Session
+    ) -> Optional[Screening]:
+        """
+        Pause an active screening session
+        
+        Args:
+            screening_id: Screening ID to pause
+            db: Database session
+            
+        Returns:
+            Updated Screening object or None if not found
+        """
+        try:
+            screening = db.query(Screening).filter(Screening.id == screening_id).first()
+            
+            if not screening:
+                logger.error(f"Screening {screening_id} not found")
+                return None
+            
+            # Pause the session using model method
+            screening.pause_session()
+            
+            db.commit()
+            db.refresh(screening)
+            
+            logger.info(f"Screening {screening_id} paused (pause count: {screening.session_metadata.get('pause_count', 0)})")
+            return screening
+            
+        except Exception as e:
+            logger.error(f"Error pausing screening {screening_id}: {e}")
+            db.rollback()
+            return None
+    
+    async def resume_screening(
+        self,
+        screening_id: int,
+        db: Session
+    ) -> Optional[Screening]:
+        """
+        Resume a paused screening session
+        
+        Args:
+            screening_id: Screening ID to resume
+            db: Database session
+            
+        Returns:
+            Updated Screening object or None if not found
+        """
+        try:
+            screening = db.query(Screening).filter(Screening.id == screening_id).first()
+            
+            if not screening:
+                logger.error(f"Screening {screening_id} not found")
+                return None
+            
+            # Resume the session using model method
+            screening.resume_session()
+            
+            db.commit()
+            db.refresh(screening)
+            
+            total_paused = screening.session_metadata.get('total_paused_seconds', 0)
+            logger.info(f"Screening {screening_id} resumed (total paused time: {total_paused}s)")
+            return screening
+            
+        except Exception as e:
+            logger.error(f"Error resuming screening {screening_id}: {e}")
+            db.rollback()
+            return None
+    
+    async def complete_screening(
+        self,
+        screening_id: int,
+        db: Session
+    ) -> Optional[Screening]:
+        """
+        Mark screening session as completed and finalize scores
+        
+        Args:
+            screening_id: Screening ID to complete
+            db: Database session
+            
+        Returns:
+            Updated Screening object with final scores or None if not found
+        """
+        try:
+            screening = db.query(Screening).filter(Screening.id == screening_id).first()
+            
+            if not screening:
+                logger.error(f"Screening {screening_id} not found")
+                return None
+            
+            # Complete the session using model method
+            screening.complete_session()
+            
+            # Generate final scoring breakdown
+            await self._finalize_scoring_breakdown(screening, db)
+            
+            db.commit()
+            db.refresh(screening)
+            
+            logger.info(f"Screening {screening_id} completed (total time: {screening.total_time_seconds}s, score: {screening.overall_score})")
+            return screening
+            
+        except Exception as e:
+            logger.error(f"Error completing screening {screening_id}: {e}")
+            db.rollback()
+            return None
+    
+    async def _finalize_scoring_breakdown(
+        self,
+        screening: Screening,
+        db: Session
+    ) -> None:
+        """
+        Generate detailed scoring breakdown with AI rationale
+        
+        Args:
+            screening: Screening object to finalize
+            db: Database session
+        """
+        try:
+            # Build scoring breakdown from ai_evaluation
+            question_scores = []
+            
+            if screening.ai_evaluation:
+                for eval_item in screening.ai_evaluation:
+                    question_scores.append({
+                        "question_id": eval_item.get("question_id"),
+                        "score": eval_item.get("score", 0),
+                        "max_score": 10,
+                        "reason": eval_item.get("evaluation", ""),
+                        "criteria_met": eval_item.get("key_points", []),
+                        "criteria_missed": eval_item.get("missing_points", [])
+                    })
+            
+            # Calculate category scores
+            category_scores = {
+                "technical_skills": screening.technical_score or 0,
+                "problem_solving": self._calculate_problem_solving_score(screening),
+                "communication": screening.communication_score or 0,
+                "cultural_fit": self._calculate_cultural_fit_score(screening)
+            }
+            
+            # Generate AI rationale using LLM
+            scoring_rationale = await self._generate_scoring_rationale(screening, category_scores)
+            
+            # Set scoring breakdown
+            screening.scoring_breakdown = {
+                "question_scores": question_scores,
+                "category_scores": category_scores,
+                "scoring_rationale": scoring_rationale,
+                "total_questions": screening.total_questions,
+                "questions_answered": screening.questions_answered,
+                "completion_rate": screening.completion_percentage
+            }
+            
+            logger.info(f"Finalized scoring breakdown for screening {screening.id}")
+            
+        except Exception as e:
+            logger.error(f"Error finalizing scoring breakdown: {e}")
+    
+    def _calculate_problem_solving_score(self, screening: Screening) -> float:
+        """Calculate problem-solving score from responses"""
+        if not screening.ai_evaluation:
+            return 0.0
+        
+        # Look for problem-solving indicators in evaluations
+        problem_solving_scores = []
+        for eval_item in screening.ai_evaluation:
+            key_points = eval_item.get("key_points", [])
+            # Check for problem-solving related keywords
+            keywords = ["problem", "solution", "approach", "methodology", "strategy"]
+            if any(keyword in " ".join(key_points).lower() for keyword in keywords):
+                problem_solving_scores.append(eval_item.get("score", 0))
+        
+        if problem_solving_scores:
+            return (sum(problem_solving_scores) / len(problem_solving_scores)) * 10  # Scale to 100
+        
+        return screening.technical_score or 0  # Fallback to technical score
+    
+    def _calculate_cultural_fit_score(self, screening: Screening) -> float:
+        """Calculate cultural fit score from behavioral responses"""
+        if not screening.ai_evaluation:
+            return 0.0
+        
+        # Look for behavioral/cultural indicators
+        behavioral_scores = []
+        for eval_item in screening.ai_evaluation:
+            # Check if question was behavioral
+            question_id = eval_item.get("question_id")
+            if screening.questions:
+                question = next((q for q in screening.questions if q.get("id") == question_id), None)
+                if question and question.get("type") == "behavioral":
+                    behavioral_scores.append(eval_item.get("score", 0))
+        
+        if behavioral_scores:
+            return (sum(behavioral_scores) / len(behavioral_scores)) * 10  # Scale to 100
+        
+        return screening.communication_score or 70  # Reasonable default
+    
+    async def _generate_scoring_rationale(
+        self,
+        screening: Screening,
+        category_scores: Dict[str, float]
+    ) -> str:
+        """
+        Generate AI-powered scoring rationale
+        
+        Args:
+            screening: Screening object
+            category_scores: Category-wise scores
+            
+        Returns:
+            Scoring rationale text
+        """
+        try:
+            prompt = f"""
+            Based on the candidate's interview performance, provide a 2-sentence scoring rationale:
+            
+            Overall Score: {screening.overall_score}%
+            Technical Skills: {category_scores.get('technical_skills', 0)}%
+            Problem Solving: {category_scores.get('problem_solving', 0)}%
+            Communication: {category_scores.get('communication', 0)}%
+            Cultural Fit: {category_scores.get('cultural_fit', 0)}%
+            
+            Questions Answered: {screening.questions_answered}/{screening.total_questions}
+            
+            Provide a concise rationale explaining the overall assessment.
+            """
+            
+            options = LLMOptions(
+                temperature=0.3,
+                max_tokens=150
+            )
+            
+            llm_response = await self.llm_service.generate(prompt, options)
+            
+            if llm_response and llm_response.content:
+                return llm_response.content.strip()
+            else:
+                return f"Candidate scored {screening.overall_score}% overall with balanced performance across categories."
+                
+        except Exception as e:
+            logger.error(f"Error generating scoring rationale: {e}")
+            return f"Overall score: {screening.overall_score}%"
 
 # Singleton instance
 ai_screening_service = AIScreeningService()

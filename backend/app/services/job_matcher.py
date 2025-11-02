@@ -1,38 +1,34 @@
 """
 Advanced Job-Candidate Matching Service
-Using state-of-the-art models discovered through HuggingFace research
+Using JobBERT-v3 (768-dim) embeddings and cosine similarity
 """
 
 import logging
 from typing import List, Dict, Any, Tuple
 import numpy as np
-from sentence_transformers import SentenceTransformer
 from transformers import AutoTokenizer, AutoModelForTokenClassification, pipeline
 import torch
-from sklearn.metrics.pairwise import cosine_similarity
 from sqlalchemy.orm import Session
 from ..models.job import Job
 from ..models.candidate import Candidate
 from ..db.database import get_db
+from app.services.embedding_service import get_embedding_service
 
 logger = logging.getLogger(__name__)
 
 class JobCandidateMatchingService:
     """
     Advanced job-candidate matching using:
+    - JobBERT-v3 (768-dim) for semantic embeddings
     - dslim/bert-base-NER for entity extraction (76.3M downloads)
-    - sentence-transformers for semantic similarity
     - Custom scoring algorithm combining multiple factors
     """
     
     def __init__(self):
         self.device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
         
-        # Load sentence transformer for semantic similarity (research-backed)
-        self.sentence_model = SentenceTransformer(
-            'sentence-transformers/all-MiniLM-L6-v2',
-            device=self.device
-        )
+        # Use embedding service for 768-dim JobBERT-v3 embeddings
+        self.embedding_service = get_embedding_service()
         
         # Load BERT-based NER model (discovered through HF research)
         self.ner_tokenizer = AutoTokenizer.from_pretrained("dslim/bert-base-NER")
@@ -45,7 +41,7 @@ class JobCandidateMatchingService:
             device=0 if torch.cuda.is_available() else -1
         )
         
-        logger.info("JobCandidateMatchingService initialized with advanced models")
+        logger.info("JobCandidateMatchingService initialized with JobBERT-v3 (768-dim)")
     
     def extract_job_requirements(self, job_description: str) -> Dict[str, Any]:
         """
@@ -171,32 +167,65 @@ class JobCandidateMatchingService:
     
     def _calculate_semantic_similarity(self, candidate, job) -> float:
         """
-        Calculate semantic similarity using sentence transformers
+        Calculate semantic similarity using JobBERT-v3 (768-dim) embeddings
+        Uses pre-computed embeddings from database if available
         """
-        # Create candidate summary
-        candidate_text = f"{candidate.summary} {' '.join(candidate.skills) if candidate.skills else ''}"
-        
-        # Generate embeddings
-        candidate_embedding = self.sentence_model.encode([candidate_text])
-        job_embedding = self.sentence_model.encode([job.description])
-        
-        # Calculate cosine similarity
-        similarity = cosine_similarity(candidate_embedding, job_embedding)[0][0]
-        return float(similarity)
+        try:
+            # Try to use pre-computed embeddings from database (768-dim)
+            if candidate.resume_embedding is not None and len(candidate.resume_embedding) == 768:
+                candidate_embedding = np.array(candidate.resume_embedding)
+            else:
+                # Generate new embedding if not available
+                candidate_text = f"{candidate.summary} {' '.join(candidate.skills.get('technical', [])) if candidate.skills else ''}"
+                candidate_emb_list = self.embedding_service.generate_text_embedding(candidate_text)
+                candidate_embedding = np.array(candidate_emb_list)
+            
+            if job.job_description_embedding is not None and len(job.job_description_embedding) == 768:
+                job_embedding = np.array(job.job_description_embedding)
+            else:
+                # Generate new embedding if not available
+                job_emb_list = self.embedding_service.generate_text_embedding(job.description)
+                job_embedding = np.array(job_emb_list)
+            
+            # Calculate cosine similarity using embedding service
+            similarity = self.embedding_service.cosine_similarity(
+                candidate_embedding,
+                job_embedding
+            )
+            
+            logger.debug(f"Semantic similarity: {similarity:.3f} (using 768-dim JobBERT-v3)")
+            return float(similarity)
+            
+        except Exception as e:
+            logger.error(f"Error calculating semantic similarity: {e}")
+            return 0.5  # Return neutral score on error
     
-    def _calculate_skills_match(self, candidate_skills: List[str], required_skills: List[str]) -> float:
+    def _calculate_skills_match(self, candidate_skills: Dict[str, List[str]], required_skills: List[str]) -> float:
         """
         Calculate skills match score
+        Candidate skills is a dict with 'technical' and 'soft' keys
         """
         if not candidate_skills or not required_skills:
             return 0.0
         
-        candidate_skills_lower = [skill.lower() for skill in candidate_skills]
+        # Extract all skills from candidate (technical + soft)
+        all_candidate_skills = []
+        if isinstance(candidate_skills, dict):
+            all_candidate_skills.extend(candidate_skills.get('technical', []))
+            all_candidate_skills.extend(candidate_skills.get('soft', []))
+        elif isinstance(candidate_skills, list):
+            all_candidate_skills = candidate_skills
+        
+        if not all_candidate_skills:
+            return 0.0
+        
+        candidate_skills_lower = [skill.lower() for skill in all_candidate_skills]
         required_skills_lower = [skill.lower() for skill in required_skills]
         
         matched_skills = set(candidate_skills_lower) & set(required_skills_lower)
         match_ratio = len(matched_skills) / len(required_skills_lower)
         
+        logger.debug(f"Skills match: {len(matched_skills)}/{len(required_skills_lower)} = {match_ratio:.2f}")
         return min(match_ratio, 1.0)
     
     def _calculate_experience_match(self, candidate_exp: int, required_exp: int) -> float:
