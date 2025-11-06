@@ -17,6 +17,9 @@ from app.models.job import Job
 from app.models.candidate import Candidate
 from app.models.screening import Screening, ScreeningStatus, SessionState
 from app.services.llm_provider import get_llm_service, LLMOptions
+from app.services.rag_service import RAGService
+from app.services.embedding_service import EmbeddingService
+from app.services.bias_detector import BiasDetector, BiasDetection
 
 logger = logging.getLogger(__name__)
 
@@ -36,11 +39,17 @@ class AIScreeningService:
     """
     AI-powered screening service using Multi-Provider LLM
     Supports automatic failover between Ollama Cloud and Google Gemini
+    Enhanced with RAG for company-specific context
     """
     
     def __init__(self):
         self.llm_service = get_llm_service()
         self.session_timeout = 300  # 5 minutes
+        # Initialize RAG service with embedding service
+        embedding_service = EmbeddingService()
+        self.rag_service = RAGService(embedding_service)
+        # Initialize Bias Detector
+        self.bias_detector = BiasDetector()
         
     async def generate_screening_questions(
         self,
@@ -52,6 +61,7 @@ class AIScreeningService:
     ) -> Dict[str, Any]:
         """
         Generate personalized screening questions based on job and candidate profile
+        Enhanced with RAG for company-specific context
         """
         # Get job and candidate data
         job = db.query(Job).filter(Job.id == job_id).first()
@@ -71,9 +81,12 @@ class AIScreeningService:
         # Create context for AI
         context = self._build_question_context(job, candidate)
         
-        # Generate questions using Ollama
+        # Get organization_id from job
+        organization_id = job.organization_id
+        
+        # Generate questions using LLM with RAG enhancement
         questions = await self._generate_questions_with_ollama(
-            context, num_questions, question_types
+            context, num_questions, question_types, db, organization_id
         )
         
         # Create screening record
@@ -210,13 +223,33 @@ class AIScreeningService:
         self,
         context: Dict[str, Any],
         num_questions: int,
-        question_types: List[QuestionType]
+        question_types: List[QuestionType],
+        db: Session,
+        organization_id: int
     ) -> List[Dict[str, Any]]:
         """
-        Generate questions using Ollama LLM
+        Generate questions using LLM with RAG-enhanced context
         """
-        prompt = f"""
-        You are an AI HR specialist conducting a screening interview. Generate {num_questions} diverse screening questions based on the following context:
+        # Build base query for RAG
+        base_query = f"""
+        Generate screening interview questions for a {context['job']['title']} position.
+        Required skills: {', '.join(context['job']['skills_required'] or [])}
+        Experience level: {context['job']['experience_level']}
+        """
+        
+        # Augment prompt with company-specific context using RAG
+        enhanced_prompt = await self.rag_service.augment_prompt(
+            db=db,
+            query=base_query,
+            organization_id=organization_id,
+            context_types=["company_values", "tech_requirements", "interview_style"],
+            max_context_tokens=1500
+        )
+        
+        # Build full prompt with RAG context
+        prompt = f"""{enhanced_prompt}
+
+        Generate {num_questions} diverse screening questions based on the following additional context:
 
         JOB DETAILS:
         Title: {context['job']['title']}
@@ -232,11 +265,12 @@ class AIScreeningService:
         QUESTION TYPES TO INCLUDE: {', '.join(question_types)}
 
         Generate questions that are:
-        1. Relevant to the job requirements
+        1. Relevant to the job requirements AND company context above
         2. Appropriate for the candidate's experience level
         3. Mix of technical, behavioral, and situational questions
-        4. Clear and concise
-        5. Include expected answer criteria
+        4. Aligned with company values and technical requirements
+        5. Clear and concise
+        6. Include expected answer criteria
 
         Return ONLY valid JSON in this exact format:
         {{
@@ -283,7 +317,10 @@ class AIScreeningService:
                         if "id" not in q:
                             q["id"] = f"q{i+1}"
                     
-                    return questions[:num_questions]
+                    # Check questions for bias
+                    questions_with_bias_check = await self._check_questions_for_bias(questions)
+                    
+                    return questions_with_bias_check[:num_questions]
                     
                 except json.JSONDecodeError as e:
                     logger.error(f"Failed to parse JSON from LLM: {e}")
@@ -772,6 +809,51 @@ class AIScreeningService:
         except Exception as e:
             logger.error(f"Error generating scoring rationale: {e}")
             return f"Overall score: {screening.overall_score}%"
+    
+    async def _check_questions_for_bias(self, questions: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
+        """
+        Check generated questions for bias and add warnings.
+        
+        Args:
+            questions: List of question dicts
+        
+        Returns:
+            Questions with bias_check field added
+        """
+        for question in questions:
+            question_text = question.get("question", "")
+            
+            # Run bias detection
+            biases = await self.bias_detector.detect_bias(question_text, use_llm=True)
+            
+            if biases:
+                # Add bias warnings to question
+                question["bias_warnings"] = [
+                    {
+                        "category": bias.category.value,
+                        "severity": bias.severity,
+                        "explanation": bias.explanation,
+                        "suggestion": bias.suggestion,
+                        "confidence": bias.confidence,
+                        "method": bias.detection_method
+                    }
+                    for bias in biases
+                ]
+                question["has_bias"] = True
+                
+                # Log for audit trail
+                logger.warning(
+                    f"BIAS DETECTED in question '{question['id']}': "
+                    f"{len(biases)} issues found - {[b.category.value for b in biases]}"
+                )
+            else:
+                question["bias_warnings"] = []
+                question["has_bias"] = False
+        
+        return questions
+
+# Singleton instance
+ai_screening_service = AIScreeningService()
 
 # Singleton instance
 ai_screening_service = AIScreeningService()
