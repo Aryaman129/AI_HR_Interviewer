@@ -82,7 +82,7 @@ class RAGService:
             db.refresh(doc)
             
             logger.info(f"Stored document {doc.id} for org {organization_id}")
-            return doc
+            return doc.id  # Return ID instead of object
             
         except Exception as e:
             logger.error(f"Failed to store document: {str(e)}")
@@ -132,10 +132,12 @@ class RAGService:
                 sql = text("""
                     SELECT 
                         id,
+                        organization_id,
                         title,
                         content,
                         doc_type,
                         metadata,
+                        created_at,
                         1 - (embedding <=> :query_embedding) AS similarity
                     FROM company_knowledge
                     WHERE organization_id = :org_id
@@ -148,10 +150,12 @@ class RAGService:
                 sql = text("""
                     SELECT 
                         id,
+                        organization_id,
                         title,
                         content,
                         doc_type,
                         metadata,
+                        created_at,
                         1 - (embedding <=> :query_embedding) AS similarity
                     FROM company_knowledge
                     WHERE organization_id = :org_id
@@ -178,11 +182,13 @@ class RAGService:
             results = [
                 {
                     "id": row[0],
-                    "title": row[1],
-                    "content": row[2],
-                    "doc_type": row[3],
-                    "metadata": row[4],
-                    "similarity": float(row[5])
+                    "organization_id": row[1],
+                    "title": row[2],
+                    "content": row[3],
+                    "doc_type": row[4],
+                    "metadata": row[5],
+                    "created_at": row[6],
+                    "similarity": float(row[7])
                 }
                 for row in rows
             ]

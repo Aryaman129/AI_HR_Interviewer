@@ -7,6 +7,7 @@ from fastapi import APIRouter
 from app.api.v1.endpoints import resumes
 from app.api.v1.endpoints import jobs
 from app.api.v1.endpoints import screening
+from app.api.v1.endpoints import knowledge
 
 api_router = APIRouter(prefix="/api/v1")
 
@@ -14,6 +15,7 @@ api_router = APIRouter(prefix="/api/v1")
 api_router.include_router(resumes.router)
 api_router.include_router(jobs.router)
 api_router.include_router(screening.router)
+api_router.include_router(knowledge.router)
 
 # Future endpoints (uncomment as you create them)
 # api_router.include_router(candidates.router)
