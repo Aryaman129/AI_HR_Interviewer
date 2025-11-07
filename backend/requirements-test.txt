@@ -1,0 +1,32 @@
+# Testing Dependencies for AI-HR Platform
+
+# Core testing framework
+pytest>=8.0.0
+pytest-asyncio>=0.23.0
+pytest-cov>=4.1.0
+pytest-xdist>=3.5.0  # Parallel test execution
+
+# HTTP client for API testing
+httpx>=0.26.0
+
+# Playwright for E2E browser testing
+playwright>=1.40.0
+pytest-playwright>=0.4.4
+
+# Database testing
+# pytest-postgresql>=5.0.0  # Removed - conflicts with psycopg2, we handle DB setup manually
+sqlalchemy-utils>=0.41.1
+
+# Fixtures and mocking
+pytest-mock>=3.12.0
+faker>=22.0.0  # Generate fake data for tests
+
+# Test data factories
+factory-boy>=3.3.0
+
+# Coverage reporting
+coverage[toml]>=7.4.0
+
+# Additional utilities
+freezegun>=1.4.0  # Time mocking
+responses>=0.24.1  # HTTP mocking
