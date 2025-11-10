@@ -3,6 +3,8 @@ Interview API Endpoints
 
 Handles voice/video interviews with real-time session control.
 Enables multi-tenant isolation and human-in-the-loop feedback.
+
+All endpoints require authentication with role-based access control.
 """
 from datetime import datetime, timedelta
 from typing import List, Optional
@@ -14,7 +16,11 @@ from uuid import uuid4
 from app.db.database import get_db
 from app.models.interview import Interview, InterviewStatus, SessionState
 from app.models.application import Application
+from app.models.candidate import Candidate
+from app.models.job import Job
+from app.models.user import User
 from app.models.audit_log import AuditLog
+from app.dependencies.auth import get_current_user, require_role
 from app.schemas.interview import (
     InterviewCreate,
     InterviewUpdate,
@@ -53,11 +59,11 @@ def log_to_audit(db: Session, action: str, entity_type: str, entity_id: int, cha
 @router.post("/", response_model=InterviewResponse, status_code=201)
 async def create_interview(
     interview_data: InterviewCreate,
-    db: Session = Depends(get_db)
-    # current_user: User = Depends(get_current_user)  # TODO: Add when auth ready
+    db: Session = Depends(get_db),
+    current_user: User = Depends(require_role(["recruiter", "hr_manager", "admin"]))
 ):
     """
-    Schedule a new interview session.
+    Schedule a new interview session. Requires interviewer+ role.
     
     - **candidate_id**: ID of the candidate
     - **job_id**: ID of the job position
@@ -66,16 +72,57 @@ async def create_interview(
     - **platform**: 'twilio', 'zoom', 'teams', or 'manual'
     - **scheduled_at**: When the interview is scheduled
     - **duration_minutes**: Expected duration (default 30)
-    - **organization_id**: Required for multi-tenant isolation
-    - **client_id**: Optional client ID for staffing agencies
     
-    Returns the created interview with session tracking enabled.
+    All entities (candidate, job, application) must belong to your organization.
+    Organization ID is automatically set from authenticated user.
     """
-    # TODO: Verify candidate exists and belongs to organization
-    # TODO: Verify job exists and belongs to organization
-    # TODO: Check for scheduling conflicts
+    # Verify candidate belongs to user's organization
+    candidate = db.query(Candidate).filter(
+        Candidate.id == interview_data.candidate_id,
+        Candidate.organization_id == current_user.organization_id
+    ).first()
     
-    # Create interview with multi-tenant isolation
+    if not candidate:
+        raise HTTPException(status_code=404, detail="Candidate not found in your organization")
+    
+    # Verify job belongs to user's organization
+    job = db.query(Job).filter(
+        Job.id == interview_data.job_id,
+        Job.organization_id == current_user.organization_id
+    ).first()
+    
+    if not job:
+        raise HTTPException(status_code=404, detail="Job not found in your organization")
+    
+    # If application_id provided, verify it belongs to user's organization
+    if interview_data.application_id:
+        application = db.query(Application).join(Job).filter(
+            Application.id == interview_data.application_id,
+            Job.organization_id == current_user.organization_id
+        ).first()
+        
+        if not application:
+            raise HTTPException(status_code=404, detail="Application not found in your organization")
+    
+    # Check for scheduling conflicts (same candidate, overlapping time)
+    if interview_data.scheduled_at:
+        conflict_start = interview_data.scheduled_at - timedelta(minutes=interview_data.duration_minutes or 30)
+        conflict_end = interview_data.scheduled_at + timedelta(minutes=interview_data.duration_minutes or 30)
+        
+        conflict = db.query(Interview).filter(
+            Interview.candidate_id == interview_data.candidate_id,
+            Interview.organization_id == current_user.organization_id,
+            Interview.scheduled_at.between(conflict_start, conflict_end),
+            Interview.status.in_([InterviewStatus.SCHEDULED.value, InterviewStatus.IN_PROGRESS.value])
+        ).first()
+        
+        if conflict:
+            raise HTTPException(
+                status_code=400,
+                detail=f"Scheduling conflict: Candidate has another interview at {conflict.scheduled_at}"
+            )
+    
+    # Create interview with organization isolation
     interview = Interview(
         candidate_id=interview_data.candidate_id,
         job_id=interview_data.job_id,
@@ -84,20 +131,20 @@ async def create_interview(
         platform=interview_data.platform,
         scheduled_at=interview_data.scheduled_at,
         duration_minutes=interview_data.duration_minutes,
-        organization_id=interview_data.organization_id,
+        organization_id=current_user.organization_id,  # Force user's org
         client_id=interview_data.client_id,
+        interviewer_id=current_user.id,
         status=InterviewStatus.SCHEDULED.value,
         session_state=SessionState.SCHEDULED.value,
         created_at=datetime.utcnow(),
         updated_at=datetime.utcnow()
-        # created_by=current_user.id  # TODO: Add when auth ready
     )
     
     db.add(interview)
     db.commit()
     db.refresh(interview)
     
-    # Log to audit trail
+    # Log to audit trail with user context
     log_to_audit(
         db=db,
         action="interview_created",
@@ -109,8 +156,8 @@ async def create_interview(
             "interview_type": interview.interview_type,
             "scheduled_at": interview.scheduled_at.isoformat() if interview.scheduled_at else None,
             "organization_id": interview.organization_id
-        }
-        # user_id=current_user.id  # TODO: Add when auth ready
+        },
+        user_id=current_user.id
     )
     
     # TODO: Trigger calendar invite/notification
@@ -132,37 +179,46 @@ async def list_interviews(
     candidate_id: Optional[int] = Query(None, description="Filter by candidate ID"),
     status: Optional[InterviewStatus] = Query(None, description="Filter by status"),
     interview_type: Optional[str] = Query(None, description="Filter by type (voice/video/phone)"),
-    organization_id: Optional[int] = Query(None, description="Filter by organization ID"),
-    client_id: Optional[int] = Query(None, description="Filter by client ID"),
     scheduled_after: Optional[datetime] = Query(None, description="Filter interviews scheduled after this date"),
     scheduled_before: Optional[datetime] = Query(None, description="Filter interviews scheduled before this date"),
-    db: Session = Depends(get_db)
-    # current_user: User = Depends(get_current_user)  # TODO: Add when auth ready
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user)
 ):
     """
-    List interviews with pagination and filtering.
+    List interviews with pagination and filtering. Requires authentication.
     
-    Supports multi-tenant isolation via organization_id.
+    Automatically filtered by user's organization for security.
     Returns paginated results with total count.
     """
-    query = db.query(Interview)
+    query = db.query(Interview).filter(
+        Interview.organization_id == current_user.organization_id
+    )
     
-    # Multi-tenant filter (CRITICAL)
-    # TODO: Enforce current_user.organization_id when auth ready
-    if organization_id:
-        query = query.filter(Interview.organization_id == organization_id)
-    
-    # Apply filters
+    # Apply optional filters
     if job_id:
+        # Verify job belongs to user's org
+        job = db.query(Job).filter(
+            Job.id == job_id,
+            Job.organization_id == current_user.organization_id
+        ).first()
+        if not job:
+            raise HTTPException(status_code=404, detail="Job not found in your organization")
         query = query.filter(Interview.job_id == job_id)
+    
     if candidate_id:
+        # Verify candidate belongs to user's org
+        candidate = db.query(Candidate).filter(
+            Candidate.id == candidate_id,
+            Candidate.organization_id == current_user.organization_id
+        ).first()
+        if not candidate:
+            raise HTTPException(status_code=404, detail="Candidate not found in your organization")
         query = query.filter(Interview.candidate_id == candidate_id)
+    
     if status:
         query = query.filter(Interview.status == status.value)
     if interview_type:
         query = query.filter(Interview.interview_type == interview_type)
-    if client_id:
-        query = query.filter(Interview.client_id == client_id)
     if scheduled_after:
         query = query.filter(Interview.scheduled_at >= scheduled_after)
     if scheduled_before:
@@ -195,25 +251,27 @@ async def list_interviews(
 @router.get("/{interview_id}", response_model=InterviewResponse)
 async def get_interview(
     interview_id: int,
-    db: Session = Depends(get_db)
-    # current_user: User = Depends(get_current_user)  # TODO: Add when auth ready
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user)
 ):
     """
-    Get a single interview by ID.
+    Get a single interview by ID. Requires authentication.
     
     Returns full interview details including:
     - Session state and tracking
     - Recording and transcript
     - AI analysis and scores
     - Human feedback and ratings
+    
+    Only accessible if interview belongs to your organization.
     """
-    interview = db.query(Interview).filter(Interview.id == interview_id).first()
+    interview = db.query(Interview).filter(
+        Interview.id == interview_id,
+        Interview.organization_id == current_user.organization_id
+    ).first()
     
     if not interview:
-        raise HTTPException(status_code=404, detail=f"Interview {interview_id} not found")
-    
-    # Multi-tenant isolation check
-    # TODO: Verify interview.organization_id == current_user.organization_id when auth ready
+        raise HTTPException(status_code=404, detail="Interview not found in your organization")
     
     return interview
 
@@ -226,22 +284,22 @@ async def get_interview(
 async def update_interview(
     interview_id: int,
     update_data: InterviewUpdate,
-    db: Session = Depends(get_db)
-    # current_user: User = Depends(get_current_user)  # TODO: Add when auth ready
+    db: Session = Depends(get_db),
+    current_user: User = Depends(require_role(["recruiter", "hr_manager", "admin"]))
 ):
     """
-    Update interview details (rescheduling, notes, etc.).
+    Update interview details (rescheduling, notes, etc.). Requires interviewer+ role.
     
     Supports partial updates. Only provided fields will be updated.
-    Logs changes to audit trail.
+    Logs changes to audit trail with user context.
     """
-    interview = db.query(Interview).filter(Interview.id == interview_id).first()
+    interview = db.query(Interview).filter(
+        Interview.id == interview_id,
+        Interview.organization_id == current_user.organization_id
+    ).first()
     
     if not interview:
-        raise HTTPException(status_code=404, detail=f"Interview {interview_id} not found")
-    
-    # Multi-tenant isolation check
-    # TODO: Verify interview.organization_id == current_user.organization_id when auth ready
+        raise HTTPException(status_code=404, detail="Interview not found in your organization")
     
     # Track changes for audit log
     changes = {}
@@ -267,11 +325,9 @@ async def update_interview(
             action="interview_updated",
             entity_type="interview",
             entity_id=interview.id,
-            changes=changes
-            # user_id=current_user.id  # TODO: Add when auth ready
+            changes=changes,
+            user_id=current_user.id
         )
-    
-    # TODO: Send notification if rescheduled
     
     return interview
 
@@ -283,33 +339,32 @@ async def update_interview(
 @router.delete("/{interview_id}", status_code=204)
 async def delete_interview(
     interview_id: int,
-    db: Session = Depends(get_db)
-    # current_user: User = Depends(get_current_user)  # TODO: Add when auth ready
+    db: Session = Depends(get_db),
+    current_user: User = Depends(require_role(["hr_manager", "admin"]))
 ):
     """
-    Cancel and delete an interview.
+    Cancel and delete an interview. Requires hr_manager+ role.
     
     Sets status to CANCELLED and logs to audit trail.
     Soft delete - marks as cancelled rather than removing.
     """
-    interview = db.query(Interview).filter(Interview.id == interview_id).first()
+    interview = db.query(Interview).filter(
+        Interview.id == interview_id,
+        Interview.organization_id == current_user.organization_id
+    ).first()
     
     if not interview:
-        raise HTTPException(status_code=404, detail=f"Interview {interview_id} not found")
-    
-    # Multi-tenant isolation check
-    # TODO: Verify interview.organization_id == current_user.organization_id when auth ready
+        raise HTTPException(status_code=404, detail="Interview not found in your organization")
     
     old_status = interview.status
     
     # Soft delete - mark as cancelled
     interview.status = InterviewStatus.CANCELLED.value
     interview.updated_at = datetime.utcnow()
-    # interview.cancelled_at = datetime.utcnow()  # TODO: Add field to model
     
     db.commit()
     
-    # Log to audit trail
+    # Log to audit trail with user context
     log_to_audit(
         db=db,
         action="interview_cancelled",
@@ -318,12 +373,9 @@ async def delete_interview(
         changes={
             "old_status": old_status,
             "new_status": "cancelled"
-        }
-        # user_id=current_user.id  # TODO: Add when auth ready
+        },
+        user_id=current_user.id
     )
-    
-    # TODO: Send cancellation notification
-    # TODO: Cancel Twilio/Zoom meeting
     
     return None
 
@@ -336,11 +388,11 @@ async def delete_interview(
 async def update_interview_status(
     interview_id: int,
     status_update: InterviewStatusUpdate,
-    db: Session = Depends(get_db)
-    # current_user: User = Depends(get_current_user)  # TODO: Add when auth ready
+    db: Session = Depends(get_db),
+    current_user: User = Depends(require_role(["hiring_manager", "recruiter", "hr_manager", "admin"]))
 ):
     """
-    Update interview status with state machine validation.
+    Update interview status with state machine validation. Requires interviewer+ role.
     
     Valid transitions:
     - scheduled → in_progress (when call starts)
@@ -353,13 +405,13 @@ async def update_interview_status(
     
     Validates transitions and logs to audit trail.
     """
-    interview = db.query(Interview).filter(Interview.id == interview_id).first()
+    interview = db.query(Interview).filter(
+        Interview.id == interview_id,
+        Interview.organization_id == current_user.organization_id
+    ).first()
     
     if not interview:
-        raise HTTPException(status_code=404, detail=f"Interview {interview_id} not found")
-    
-    # Multi-tenant isolation check
-    # TODO: Verify interview.organization_id == current_user.organization_id when auth ready
+        raise HTTPException(status_code=404, detail="Interview not found in your organization")
     
     old_status = interview.status
     new_status = status_update.status
@@ -395,7 +447,7 @@ async def update_interview_status(
     db.commit()
     db.refresh(interview)
     
-    # Log to audit trail
+    # Log to audit trail with user context
     log_to_audit(
         db=db,
         action="interview_status_updated",
@@ -405,8 +457,8 @@ async def update_interview_status(
             "old_status": old_status,
             "new_status": new_status.value,
             "notes": status_update.notes
-        }
-        # user_id=current_user.id  # TODO: Add when auth ready
+        },
+        user_id=current_user.id
     )
     
     return interview
@@ -420,11 +472,11 @@ async def update_interview_status(
 async def control_session(
     interview_id: int,
     control: InterviewSessionControl,
-    db: Session = Depends(get_db)
-    # current_user: User = Depends(get_current_user)  # TODO: Add when auth ready
+    db: Session = Depends(get_db),
+    current_user: User = Depends(require_role(["hiring_manager", "hr_manager", "admin"]))
 ):
     """
-    Real-time session control for active interviews.
+    Real-time session control for active interviews. Requires interviewer+ role.
     
     Actions:
     - **start**: Begin the interview session
@@ -436,13 +488,13 @@ async def control_session(
     Uses session state machine from Interview model.
     Tracks pause counts and activity timestamps.
     """
-    interview = db.query(Interview).filter(Interview.id == interview_id).first()
+    interview = db.query(Interview).filter(
+        Interview.id == interview_id,
+        Interview.organization_id == current_user.organization_id
+    ).first()
     
     if not interview:
-        raise HTTPException(status_code=404, detail=f"Interview {interview_id} not found")
-    
-    # Multi-tenant isolation check
-    # TODO: Verify interview.organization_id == current_user.organization_id when auth ready
+        raise HTTPException(status_code=404, detail="Interview not found in your organization")
     
     old_state = interview.session_state
     
@@ -466,7 +518,7 @@ async def control_session(
         db.commit()
         db.refresh(interview)
         
-        # Log to audit trail
+        # Log to audit trail with user context
         log_to_audit(
             db=db,
             action=f"interview_session_{control.action}",
@@ -477,8 +529,8 @@ async def control_session(
                 "new_state": interview.session_state,
                 "action": control.action,
                 "notes": control.notes
-            }
-            # user_id=current_user.id  # TODO: Add when auth ready
+            },
+            user_id=current_user.id
         )
         
         return interview
@@ -495,11 +547,11 @@ async def control_session(
 async def add_feedback(
     interview_id: int,
     feedback: InterviewFeedback,
-    db: Session = Depends(get_db)
-    # current_user: User = Depends(get_current_user)  # TODO: Add when auth ready
+    db: Session = Depends(get_db),
+    current_user: User = Depends(require_role(["hiring_manager", "hr_manager", "admin"]))
 ):
     """
-    Add human interviewer feedback and ratings.
+    Add human interviewer feedback and ratings. Requires interviewer+ role.
     
     **CRITICAL: This enables human-in-the-loop control.**
     
@@ -512,27 +564,29 @@ async def add_feedback(
     All feedback is logged to audit trail for compliance.
     Detects when human rating differs significantly from AI scores.
     
-    - **interviewer_id**: ID of the human interviewer
-    - **interviewer_notes**: Detailed feedback (required)
+    - **interviewer_notes**: Detailed feedback (required, min 10 chars)
     - **interviewer_rating**: Rating 1-10 (required)
     """
-    interview = db.query(Interview).filter(Interview.id == interview_id).first()
+    interview = db.query(Interview).filter(
+        Interview.id == interview_id,
+        Interview.organization_id == current_user.organization_id
+    ).first()
     
     if not interview:
-        raise HTTPException(status_code=404, detail=f"Interview {interview_id} not found")
+        raise HTTPException(status_code=404, detail="Interview not found in your organization")
     
-    # Multi-tenant isolation check
-    # TODO: Verify interview.organization_id == current_user.organization_id when auth ready
+    # Validate feedback notes
+    if not feedback.interviewer_notes or len(feedback.interviewer_notes.strip()) < 10:
+        raise HTTPException(status_code=400, detail="Interviewer notes must be at least 10 characters")
     
     # Store old values for audit log
     old_rating = interview.interviewer_rating
     ai_score = interview.overall_score
     
-    # Update feedback fields
-    interview.interviewer_id = feedback.interviewer_id
+    # Update feedback fields (use authenticated user as interviewer)
+    interview.interviewer_id = current_user.id
     interview.interviewer_notes = feedback.interviewer_notes
     interview.interviewer_rating = feedback.interviewer_rating
-    # interview.reviewed_at = datetime.utcnow()  # TODO: Add field to model
     interview.updated_at = datetime.utcnow()
     
     db.commit()
@@ -549,25 +603,21 @@ async def add_feedback(
         if score_diff > 20:
             override = True
     
-    # Log to audit trail
+    # Log to audit trail with override detection
     log_to_audit(
         db=db,
         action="interview_feedback_added",
         entity_type="interview",
         entity_id=interview.id,
         changes={
-            "interviewer_id": feedback.interviewer_id,
             "interviewer_rating": feedback.interviewer_rating,
             "old_rating": old_rating,
             "ai_overall_score": ai_score,
             "override_detected": override,
             "notes_length": len(feedback.interviewer_notes)
-        }
-        # user_id=current_user.id  # TODO: Add when auth ready
+        },
+        user_id=current_user.id
     )
-    
-    # TODO: Trigger notification to hiring manager
-    # TODO: Update application status if interview complete
     
     return interview
 
@@ -578,16 +628,16 @@ async def add_feedback(
 
 @router.get("/analytics/performance", response_model=InterviewAnalytics)
 async def get_analytics(
-    organization_id: Optional[int] = Query(None, description="Filter by organization ID"),
-    client_id: Optional[int] = Query(None, description="Filter by client ID"),
     job_id: Optional[int] = Query(None, description="Filter by job ID"),
     start_date: Optional[datetime] = Query(None, description="Start date for analytics"),
     end_date: Optional[datetime] = Query(None, description="End date for analytics"),
-    db: Session = Depends(get_db)
-    # current_user: User = Depends(get_current_user)  # TODO: Add when auth ready
+    db: Session = Depends(get_db),
+    current_user: User = Depends(require_role(["hr_manager", "admin"]))
 ):
     """
-    Get comprehensive interview analytics and metrics.
+    Get comprehensive interview analytics and metrics. Requires hr_manager+ role.
+    
+    Automatically filtered by user's organization for security.
     
     Returns:
     - Total interviews conducted
@@ -597,19 +647,20 @@ async def get_analytics(
     - Session pause rate and duration metrics
     - Human override rate (when interviewer disagrees with AI)
     
-    Can be filtered by organization, client, job, and date range.
+    Can be filtered by job and date range.
     """
-    query = db.query(Interview)
-    
-    # Multi-tenant filter (CRITICAL)
-    # TODO: Enforce current_user.organization_id when auth ready
-    if organization_id:
-        query = query.filter(Interview.organization_id == organization_id)
-    
-    if client_id:
-        query = query.filter(Interview.client_id == client_id)
+    query = db.query(Interview).filter(
+        Interview.organization_id == current_user.organization_id
+    )
     
     if job_id:
+        # Verify job belongs to user's org
+        job = db.query(Job).filter(
+            Job.id == job_id,
+            Job.organization_id == current_user.organization_id
+        ).first()
+        if not job:
+            raise HTTPException(status_code=404, detail="Job not found in your organization")
         query = query.filter(Interview.job_id == job_id)
     
     if start_date:
@@ -732,23 +783,30 @@ async def get_analytics(
 @router.get("/candidate/{candidate_id}", response_model=List[InterviewResponse])
 async def get_interviews_by_candidate(
     candidate_id: int,
-    organization_id: Optional[int] = Query(None, description="Filter by organization ID"),
-    db: Session = Depends(get_db)
-    # current_user: User = Depends(get_current_user)  # TODO: Add when auth ready
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user)
 ):
     """
-    Get all interviews for a specific candidate.
+    Get all interviews for a specific candidate. Requires authentication.
     
     Useful to see a candidate's interview history across multiple jobs.
     Returns interviews ordered by scheduled date (most recent first).
+    
+    Candidate must belong to your organization.
     """
-    query = db.query(Interview).filter(Interview.candidate_id == candidate_id)
+    # Verify candidate belongs to user's organization
+    candidate = db.query(Candidate).filter(
+        Candidate.id == candidate_id,
+        Candidate.organization_id == current_user.organization_id
+    ).first()
     
-    # Multi-tenant filter
-    # TODO: Enforce current_user.organization_id when auth ready
-    if organization_id:
-        query = query.filter(Interview.organization_id == organization_id)
+    if not candidate:
+        raise HTTPException(status_code=404, detail="Candidate not found in your organization")
     
-    interviews = query.order_by(Interview.scheduled_at.desc()).all()
+    # Get all interviews for this candidate in user's org
+    interviews = db.query(Interview).filter(
+        Interview.candidate_id == candidate_id,
+        Interview.organization_id == current_user.organization_id
+    ).order_by(Interview.scheduled_at.desc()).all()
     
     return interviews

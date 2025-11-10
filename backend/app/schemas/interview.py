@@ -120,9 +120,10 @@ class InterviewFeedback(BaseModel):
     """
     Schema for human interviewer feedback (CRITICAL: Human-in-the-loop)
     This allows interviewers to add notes and ratings post-interview.
+    
+    Note: interviewer_id is NOT in the request - it's set from the authenticated user.
     """
-    interviewer_id: int = Field(..., description="ID of the interviewer providing feedback")
-    interviewer_notes: str = Field(..., min_length=20, description="Detailed feedback (required, min 20 chars)")
+    interviewer_notes: str = Field(..., min_length=10, description="Detailed feedback (required, min 10 chars)")
     interviewer_rating: int = Field(..., ge=1, le=10, description="Rating from 1-10")
     
     # Optional override fields
@@ -134,7 +135,6 @@ class InterviewFeedback(BaseModel):
     class Config:
         json_schema_extra = {
             "example": {
-                "interviewer_id": 5,
                 "interviewer_notes": "Candidate demonstrated strong technical skills and excellent communication. Highly recommend for next round.",
                 "interviewer_rating": 9,
                 "technical_score": 92.0,
