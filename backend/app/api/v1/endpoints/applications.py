@@ -3,6 +3,8 @@ Application API Endpoints
 
 Handles job applications with human-in-the-loop controls.
 Enables HR to track candidates through the hiring pipeline.
+
+All endpoints require authentication and enforce organization isolation.
 """
 from datetime import datetime
 from typing import List, Optional
@@ -12,7 +14,11 @@ from sqlalchemy import func, and_, or_
 
 from app.db.database import get_db
 from app.models.application import Application, ApplicationStatus
+from app.models.job import Job
+from app.models.candidate import Candidate
+from app.models.user import User
 from app.models.audit_log import AuditLog
+from app.dependencies.auth import get_current_user, require_role
 from app.schemas.application import (
     ApplicationCreate,
     ApplicationUpdate,
@@ -51,10 +57,13 @@ def log_to_audit(db: Session, action: str, entity_type: str, entity_id: int, cha
 @router.post("/", response_model=ApplicationResponse, status_code=201)
 async def create_application(
     application_data: ApplicationCreate,
-    db: Session = Depends(get_db)
+    db: Session = Depends(get_db),
+    current_user: User = Depends(require_role(["recruiter", "hr_manager", "admin"]))
 ):
     """
     Create a new job application.
+    
+    **Required role:** recruiter, hr_manager, or admin
     
     - **job_id**: ID of the job being applied to
     - **candidate_id**: ID of the candidate applying
@@ -63,10 +72,44 @@ async def create_application(
     - **source**: Application source (e.g., 'linkedin', 'direct', 'referral')
     
     Returns the created application with AI matching scores (if available).
+    
+    **Organization isolation:** Verifies job and candidate belong to user's organization.
     """
-    # TODO: Verify job exists
-    # TODO: Verify candidate exists
-    # TODO: Check for duplicate application (same job + candidate)
+    # Verify job exists and belongs to user's organization
+    job = db.query(Job).filter(
+        Job.id == application_data.job_id,
+        Job.organization_id == current_user.organization_id
+    ).first()
+    
+    if not job:
+        raise HTTPException(
+            status_code=404,
+            detail=f"Job {application_data.job_id} not found in your organization"
+        )
+    
+    # Verify candidate exists and belongs to user's organization
+    candidate = db.query(Candidate).filter(
+        Candidate.id == application_data.candidate_id,
+        Candidate.organization_id == current_user.organization_id
+    ).first()
+    
+    if not candidate:
+        raise HTTPException(
+            status_code=404,
+            detail=f"Candidate {application_data.candidate_id} not found in your organization"
+        )
+    
+    # Check for duplicate application (same job + candidate)
+    existing_application = db.query(Application).filter(
+        Application.job_id == application_data.job_id,
+        Application.candidate_id == application_data.candidate_id
+    ).first()
+    
+    if existing_application:
+        raise HTTPException(
+            status_code=400,
+            detail=f"Application already exists for candidate {application_data.candidate_id} and job {application_data.job_id}"
+        )
     
     # Create application
     application = Application(
@@ -94,7 +137,8 @@ async def create_application(
             "job_id": application.job_id,
             "candidate_id": application.candidate_id,
             "status": application.status.value
-        }
+        },
+        user_id=current_user.id
     )
     
     # TODO: Trigger AI matching in background (calculate scores)
@@ -110,21 +154,35 @@ async def create_application(
 @router.get("/{application_id}", response_model=ApplicationResponse)
 async def get_application(
     application_id: int,
-    db: Session = Depends(get_db)
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user)
 ):
     """
     Get a single application by ID.
+    
+    **Required:** authenticated user
     
     Returns full application details including:
     - AI matching scores
     - AI recommendations with reasoning
     - Human review decisions
     - Pipeline status
+    
+    **Organization isolation:** Only applications from user's organization are accessible.
     """
-    application = db.query(Application).filter(Application.id == application_id).first()
+    # JOIN with Job to filter by organization_id
+    application = db.query(Application)\
+        .join(Job, Application.job_id == Job.id)\
+        .filter(
+            Application.id == application_id,
+            Job.organization_id == current_user.organization_id
+        ).first()
     
     if not application:
-        raise HTTPException(status_code=404, detail=f"Application {application_id} not found")
+        raise HTTPException(
+            status_code=404,
+            detail=f"Application {application_id} not found in your organization"
+        )
     
     return application
 
@@ -135,10 +193,13 @@ async def list_applications_by_job(
     page: int = Query(1, ge=1, description="Page number"),
     page_size: int = Query(20, ge=1, le=100, description="Items per page"),
     status: Optional[ApplicationStatus] = Query(None, description="Filter by status"),
-    db: Session = Depends(get_db)
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user)
 ):
     """
     List all applications for a specific job (paginated).
+    
+    **Required:** authenticated user
     
     Useful for HR to see all candidates who applied to a job.
     
@@ -146,7 +207,22 @@ async def list_applications_by_job(
     - **page**: Page number (default 1)
     - **page_size**: Items per page (default 20, max 100)
     - **status**: Optional filter by status (e.g., 'screening_passed')
+    
+    **Organization isolation:** Only shows applications for jobs in user's organization.
     """
+    # First verify the job exists and belongs to user's organization
+    job = db.query(Job).filter(
+        Job.id == job_id,
+        Job.organization_id == current_user.organization_id
+    ).first()
+    
+    if not job:
+        raise HTTPException(
+            status_code=404,
+            detail=f"Job {job_id} not found in your organization"
+        )
+    
+    # Query applications for this job
     query = db.query(Application).filter(Application.job_id == job_id)
     
     if status:
@@ -172,13 +248,31 @@ async def list_applications_by_job(
 @router.get("/candidate/{candidate_id}", response_model=List[ApplicationResponse])
 async def list_applications_by_candidate(
     candidate_id: int,
-    db: Session = Depends(get_db)
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user)
 ):
     """
     List all applications from a specific candidate.
     
+    **Required:** authenticated user
+    
     Useful to see a candidate's application history.
+    
+    **Organization isolation:** Only shows applications for candidates in user's organization.
     """
+    # First verify candidate exists and belongs to user's organization
+    candidate = db.query(Candidate).filter(
+        Candidate.id == candidate_id,
+        Candidate.organization_id == current_user.organization_id
+    ).first()
+    
+    if not candidate:
+        raise HTTPException(
+            status_code=404,
+            detail=f"Candidate {candidate_id} not found in your organization"
+        )
+    
+    # Get all applications for this candidate
     applications = db.query(Application) \
         .filter(Application.candidate_id == candidate_id) \
         .order_by(Application.applied_at.desc()) \
@@ -195,10 +289,13 @@ async def list_applications_by_candidate(
 async def update_application_status(
     application_id: int,
     status_update: ApplicationStatusUpdate,
-    db: Session = Depends(get_db)
+    db: Session = Depends(get_db),
+    current_user: User = Depends(require_role(["recruiter", "hr_manager", "admin"]))
 ):
     """
     Update application status (move through pipeline).
+    
+    **Required role:** recruiter, hr_manager, or admin
     
     Pipeline transitions:
     - applied → screening → screening_passed/screening_failed
@@ -208,11 +305,22 @@ async def update_application_status(
     - Any status → rejected/withdrawn
     
     Logs all status changes to audit trail.
+    
+    **Organization isolation:** Only applications from user's organization can be updated.
     """
-    application = db.query(Application).filter(Application.id == application_id).first()
+    # JOIN with Job to filter by organization_id
+    application = db.query(Application)\
+        .join(Job, Application.job_id == Job.id)\
+        .filter(
+            Application.id == application_id,
+            Job.organization_id == current_user.organization_id
+        ).first()
     
     if not application:
-        raise HTTPException(status_code=404, detail=f"Application {application_id} not found")
+        raise HTTPException(
+            status_code=404,
+            detail=f"Application {application_id} not found in your organization"
+        )
     
     old_status = application.status
     new_status = status_update.status
@@ -238,7 +346,8 @@ async def update_application_status(
             "old_status": old_status.value,
             "new_status": new_status.value,
             "notes": status_update.notes
-        }
+        },
+        user_id=current_user.id
     )
     
     # TODO: Trigger notifications (email, Slack, etc.)
@@ -255,11 +364,13 @@ async def update_application_status(
 async def review_application(
     application_id: int,
     review: ApplicationReview,
-    # current_user: User = Depends(get_current_user),  # TODO: Add auth
-    db: Session = Depends(get_db)
+    db: Session = Depends(get_db),
+    current_user: User = Depends(require_role(["hiring_manager", "recruiter", "hr_manager", "admin"]))
 ):
     """
     HR reviews application and makes final decision.
+    
+    **Required role:** hiring_manager, recruiter, hr_manager, or admin
     
     **CRITICAL: This enables human-in-the-loop control.**
     
@@ -275,11 +386,22 @@ async def review_application(
     - **human_notes**: Required reasoning (min 10 chars)
     - **rejection_reason**: Required if rejecting
     - **rejection_category**: Optional categorization
+    
+    **Organization isolation:** Only applications from user's organization can be reviewed.
     """
-    application = db.query(Application).filter(Application.id == application_id).first()
+    # JOIN with Job to filter by organization_id
+    application = db.query(Application)\
+        .join(Job, Application.job_id == Job.id)\
+        .filter(
+            Application.id == application_id,
+            Job.organization_id == current_user.organization_id
+        ).first()
     
     if not application:
-        raise HTTPException(status_code=404, detail=f"Application {application_id} not found")
+        raise HTTPException(
+            status_code=404,
+            detail=f"Application {application_id} not found in your organization"
+        )
     
     # Store old values for audit log
     old_decision = application.human_decision
@@ -289,7 +411,7 @@ async def review_application(
     application.human_decision = review.human_decision
     application.human_notes = review.human_notes
     application.reviewed_at = datetime.utcnow()
-    # application.reviewed_by = current_user.id  # TODO: Add when auth is ready
+    application.reviewed_by = current_user.id
     
     # Handle rejection
     if review.human_decision == 'reject':
@@ -324,8 +446,8 @@ async def review_application(
             "override": override,
             "notes": review.human_notes,
             "rejection_reason": review.rejection_reason
-        }
-        # user_id=current_user.id  # TODO: Add when auth is ready
+        },
+        user_id=current_user.id
     )
     
     # TODO: Trigger notifications to candidate
@@ -341,11 +463,13 @@ async def review_application(
 @router.get("/analytics/pipeline", response_model=PipelineAnalytics)
 async def get_pipeline_analytics(
     job_id: Optional[int] = Query(None, description="Filter by job ID"),
-    organization_id: Optional[int] = Query(None, description="Filter by organization ID"),
-    db: Session = Depends(get_db)
+    db: Session = Depends(get_db),
+    current_user: User = Depends(require_role(["hr_manager", "admin"]))
 ):
     """
     Get pipeline analytics and metrics.
+    
+    **Required role:** hr_manager or admin
     
     Returns:
     - Total applications
@@ -354,14 +478,30 @@ async def get_pipeline_analytics(
     - Time metrics (avg time to screen, interview, hire)
     - AI performance (recommendation distribution, human override rate)
     
-    Can be filtered by job or organization.
+    Can be filtered by job (within user's organization).
+    
+    **Organization isolation:** Only shows analytics for user's organization.
     """
-    query = db.query(Application)
+    # Base query with organization filter via JOIN
+    query = db.query(Application)\
+        .join(Job, Application.job_id == Job.id)\
+        .filter(Job.organization_id == current_user.organization_id)
     
+    # Optional job filter (already org-filtered)
     if job_id:
+        # Verify job belongs to user's organization
+        job = db.query(Job).filter(
+            Job.id == job_id,
+            Job.organization_id == current_user.organization_id
+        ).first()
+        
+        if not job:
+            raise HTTPException(
+                status_code=404,
+                detail=f"Job {job_id} not found in your organization"
+            )
+        
         query = query.filter(Application.job_id == job_id)
-    
-    # TODO: Add organization_id filter when multi-tenancy is ready
     
     # Total applications
     total_applications = query.count()
@@ -450,18 +590,32 @@ async def get_pipeline_analytics(
 @router.delete("/{application_id}", status_code=204)
 async def delete_application(
     application_id: int,
-    db: Session = Depends(get_db)
+    db: Session = Depends(get_db),
+    current_user: User = Depends(require_role(["hr_manager", "admin"]))
 ):
     """
     Delete (withdraw) an application.
     
+    **Required role:** hr_manager or admin
+    
     Sets status to WITHDRAWN and logs to audit trail.
     Soft delete - doesn't actually remove from database.
+    
+    **Organization isolation:** Only applications from user's organization can be deleted.
     """
-    application = db.query(Application).filter(Application.id == application_id).first()
+    # JOIN with Job to filter by organization_id
+    application = db.query(Application)\
+        .join(Job, Application.job_id == Job.id)\
+        .filter(
+            Application.id == application_id,
+            Job.organization_id == current_user.organization_id
+        ).first()
     
     if not application:
-        raise HTTPException(status_code=404, detail=f"Application {application_id} not found")
+        raise HTTPException(
+            status_code=404,
+            detail=f"Application {application_id} not found in your organization"
+        )
     
     old_status = application.status
     
@@ -479,8 +633,9 @@ async def delete_application(
         entity_id=application.id,
         changes={
             "old_status": old_status.value,
-            "new_status": "withdrawn"
-        }
+            "new_status": ApplicationStatus.WITHDRAWN.value
+        },
+        user_id=current_user.id
     )
     
     return None
