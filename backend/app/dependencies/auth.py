@@ -84,6 +84,27 @@ async def get_current_user(
     return user
 
 
+async def get_current_active_user(
+    token: str = Depends(oauth2_scheme),
+    db: Session = Depends(get_db)
+) -> User:
+    """
+    Dependency to get the current active user (alias for get_current_user).
+    The get_current_user function already validates that the user is active.
+    
+    Args:
+        token: JWT token from Authorization header
+        db: Database session
+        
+    Returns:
+        User object if authenticated and active
+        
+    Raises:
+        HTTPException: 401 if token invalid, 403 if user inactive or locked
+    """
+    return await get_current_user(token, db)
+
+
 async def get_optional_user(
     token: str = Depends(oauth2_scheme),
     db: Session = Depends(get_db)
@@ -105,12 +126,12 @@ async def get_optional_user(
         return None
 
 
-def require_role(*allowed_roles: UserRole) -> Callable:
+def require_role(*allowed_roles) -> Callable:
     """
     Dependency factory for role-based access control.
     
     Args:
-        *allowed_roles: Variable number of UserRole enum values
+        *allowed_roles: Variable number of UserRole enum values or role strings or list of role strings
         
     Returns:
         Dependency function that checks user role
@@ -129,16 +150,37 @@ def require_role(*allowed_roles: UserRole) -> Callable:
         @router.post("/hr-or-manager")
         async def hr_route(
             current_user: User = Depends(get_current_user),
-            _: None = Depends(require_role(UserRole.HR_MANAGER, UserRole.ADMIN))
+            _: None = Depends(require_role(["hr_manager", "admin"]))
         ):
             return {"message": "HR access granted"}
     """
-    async def role_checker(current_user: User = Depends(get_current_user)) -> None:
-        if current_user.role not in allowed_roles:
+    # Normalize allowed_roles to a list of UserRole enums
+    normalized_roles = []
+    for role in allowed_roles:
+        if isinstance(role, list):
+            # Handle list of strings
+            for r in role:
+                if isinstance(r, str):
+                    normalized_roles.append(UserRole(r))
+                else:
+                    normalized_roles.append(r)
+        elif isinstance(role, str):
+            # Handle individual string
+            normalized_roles.append(UserRole(role))
+        else:
+            # Handle UserRole enum
+            normalized_roles.append(role)
+    
+    async def role_checker(current_user: User = Depends(get_current_user)) -> User:
+        """Check user role and return the user object"""
+        if current_user.role not in normalized_roles:
+            role_names = ', '.join(r.value if hasattr(r, 'value') else str(r) for r in normalized_roles)
             raise HTTPException(
                 status_code=status.HTTP_403_FORBIDDEN,
-                detail=f"Access denied. Required role: {', '.join(r.value for r in allowed_roles)}"
+                detail=f"Access denied. Required role: {role_names}"
             )
+        # Return the user object so it can be used by the endpoint
+        return current_user
     
     return role_checker
 

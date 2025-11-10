@@ -11,22 +11,26 @@ from sqlalchemy import desc, asc, and_, or_
 from app.db.database import get_db
 from app.models.job import Job
 from app.models.candidate import Candidate
+from app.models.user import User
 from app.schemas.job import JobCreate, JobUpdate, JobResponse, JobSearchResponse
 from app.services.job_matcher import job_matcher_service
 from app.services.resume_parser import get_resume_parser
+from app.dependencies.auth import get_current_user, get_current_active_user, require_role
 
 import logging
 
 logger = logging.getLogger(__name__)
-router = APIRouter(prefix="/jobs", tags=["Jobs"])
+router = APIRouter(tags=["Jobs"])
 
 @router.post("/", response_model=JobResponse)
 def create_job(
     job_data: JobCreate,
-    db: Session = Depends(get_db)
+    db: Session = Depends(get_db),
+    current_user: User = Depends(require_role(["hr_manager", "admin"]))
 ):
     """
     Create a new job posting with automatic vector embedding generation
+    Requires: hr_manager or admin role
     """
     try:
         # Parse requirements string into list if provided
@@ -49,7 +53,8 @@ def create_job(
             experience_level=job_data.experience_level.value if hasattr(job_data.experience_level, 'value') else job_data.experience_level,
             required_skills=job_data.skills_required,  # Schema: skills_required → Model: required_skills
             department=job_data.department,
-            status="active"  # Set status to active by default
+            status="active",  # Set status to active by default
+            organization_id=current_user.organization_id  # Organization isolation
         )
         
         # Generate embeddings for semantic search
@@ -89,13 +94,20 @@ def list_jobs(
     salary_max: Optional[int] = Query(None),
     sort_by: str = Query("created_at", regex="^(created_at|title|company|salary_min)$"),
     sort_order: str = Query("desc", regex="^(asc|desc)$"),
-    db: Session = Depends(get_db)
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_active_user)
 ):
     """
     List jobs with advanced filtering and search capabilities
+    Requires: Authentication (any role)
+    Returns: Only jobs from user's organization
     """
     try:
-        query = db.query(Job).filter(Job.is_active == True)
+        # Organization isolation - only show active jobs from user's organization
+        query = db.query(Job).filter(
+            Job.status == "active",  # Use status field, not is_active property
+            Job.organization_id == current_user.organization_id
+        )
         
         # Apply filters
         if search:
@@ -103,7 +115,7 @@ def list_jobs(
                 or_(
                     Job.title.ilike(f"%{search}%"),
                     Job.description.ilike(f"%{search}%"),
-                    Job.company.ilike(f"%{search}%")
+                    Job.company_name.ilike(f"%{search}%")  # Use company_name field
                 )
             )
         
@@ -111,13 +123,13 @@ def list_jobs(
             query = query.filter(Job.location.ilike(f"%{location}%"))
         
         if employment_type:
-            query = query.filter(Job.employment_type == employment_type)
+            query = query.filter(Job.job_type == employment_type)  # Use job_type field
         
         if experience_level:
             query = query.filter(Job.experience_level == experience_level)
         
         if remote_only:
-            query = query.filter(Job.remote_option == True)
+            query = query.filter(Job.is_remote == True)  # Use is_remote field
         
         if salary_min:
             query = query.filter(Job.salary_min >= salary_min)
@@ -141,11 +153,20 @@ def list_jobs(
         raise HTTPException(status_code=500, detail=f"Failed to list jobs: {str(e)}")
 
 @router.get("/{job_id}", response_model=JobResponse)
-def get_job(job_id: int, db: Session = Depends(get_db)):
+def get_job(
+    job_id: int,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_active_user)
+):
     """
     Get specific job by ID
+    Requires: Authentication (any role)
+    Returns: Job only if it belongs to user's organization
     """
-    job = db.query(Job).filter(Job.id == job_id).first()
+    job = db.query(Job).filter(
+        Job.id == job_id,
+        Job.organization_id == current_user.organization_id  # Organization isolation
+    ).first()
     if not job:
         raise HTTPException(status_code=404, detail="Job not found")
     
@@ -155,13 +176,18 @@ def get_job(job_id: int, db: Session = Depends(get_db)):
 def update_job(
     job_id: int,
     job_update: JobUpdate,
-    db: Session = Depends(get_db)
+    db: Session = Depends(get_db),
+    current_user: User = Depends(require_role(["hr_manager", "admin"]))
 ):
     """
     Update existing job posting
+    Requires: hr_manager or admin role
     """
     try:
-        job = db.query(Job).filter(Job.id == job_id).first()
+        job = db.query(Job).filter(
+            Job.id == job_id,
+            Job.organization_id == current_user.organization_id  # Organization isolation
+        ).first()
         if not job:
             raise HTTPException(status_code=404, detail="Job not found")
         
@@ -190,23 +216,44 @@ def update_job(
         raise HTTPException(status_code=500, detail=f"Failed to update job: {str(e)}")
 
 @router.delete("/{job_id}")
-def delete_job(job_id: int, db: Session = Depends(get_db)):
+def delete_job(
+    job_id: int,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(require_role(["hr_manager", "admin"]))
+):
     """
-    Soft delete job posting
+    Soft delete job posting (sets status to CLOSED)
+    Requires: hr_manager or admin role
     """
+    from app.models.job import JobStatus
+    
     try:
-        job = db.query(Job).filter(Job.id == job_id).first()
+        job = db.query(Job).filter(
+            Job.id == job_id,
+            Job.organization_id == current_user.organization_id  # Organization isolation
+        ).first()
         if not job:
             raise HTTPException(status_code=404, detail="Job not found")
         
-        job.is_active = False
+        # Soft delete: Set status to CLOSED
+        job.status = JobStatus.CLOSED
         db.commit()
         
-        logger.info(f"Deleted job: {job_id}")
+        logger.info(f"Deleted (closed) job: {job_id}")
+        return {"message": "Job deleted successfully", "job_id": job_id}
+        
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Error deleting job {job_id}: {str(e)}")
+        db.rollback()
+        raise HTTPException(status_code=500, detail=f"Failed to delete job: {str(e)}")
         return {"message": "Job deleted successfully"}
         
     except Exception as e:
         logger.error(f"Error deleting job {job_id}: {str(e)}")
+        db.rollback()
+        raise HTTPException(status_code=500, detail=f"Failed to delete job: {str(e)}")
         db.rollback()
         raise HTTPException(status_code=500, detail=f"Failed to delete job: {str(e)}")
 
@@ -215,14 +262,19 @@ def get_matching_candidates(
     job_id: int,
     limit: int = Query(10, ge=1, le=50),
     min_score: float = Query(0.0, ge=0.0, le=1.0),
-    db: Session = Depends(get_db)
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_active_user)
 ):
     """
     Get candidates that match this job using advanced AI matching
+    Requires: Authentication (recruiter or higher)
     """
     try:
-        # Verify job exists
-        job = db.query(Job).filter(Job.id == job_id).first()
+        # Verify job exists and belongs to user's organization
+        job = db.query(Job).filter(
+            Job.id == job_id,
+            Job.organization_id == current_user.organization_id  # Organization isolation
+        ).first()
         if not job:
             raise HTTPException(status_code=404, detail="Job not found")
         
@@ -246,14 +298,19 @@ def get_matching_candidates(
 def calculate_job_candidate_match(
     job_id: int,
     candidate_id: int,
-    db: Session = Depends(get_db)
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_active_user)
 ):
     """
     Calculate detailed match score between specific job and candidate
+    Requires: Authentication (recruiter or higher)
     """
     try:
-        # Verify job and candidate exist
-        job = db.query(Job).filter(Job.id == job_id).first()
+        # Verify job exists and belongs to user's organization
+        job = db.query(Job).filter(
+            Job.id == job_id,
+            Job.organization_id == current_user.organization_id  # Organization isolation
+        ).first()
         if not job:
             raise HTTPException(status_code=404, detail="Job not found")
         
@@ -276,12 +333,20 @@ def calculate_job_candidate_match(
         raise HTTPException(status_code=500, detail=f"Failed to calculate match: {str(e)}")
 
 @router.get("/{job_id}/analytics")
-def get_job_analytics(job_id: int, db: Session = Depends(get_db)):
+def get_job_analytics(
+    job_id: int,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(require_role(["hr_manager", "recruiter", "admin"]))
+):
     """
     Get analytics and insights for a job posting
+    Requires: hr_manager, recruiter, or admin role
     """
     try:
-        job = db.query(Job).filter(Job.id == job_id).first()
+        job = db.query(Job).filter(
+            Job.id == job_id,
+            Job.organization_id == current_user.organization_id  # Organization isolation
+        ).first()
         if not job:
             raise HTTPException(status_code=404, detail="Job not found")
         

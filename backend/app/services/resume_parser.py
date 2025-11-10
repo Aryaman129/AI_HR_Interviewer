@@ -2,13 +2,14 @@
 Resume Parser Service
 Extracts information from PDF/DOCX resumes using spaCy NER and sentence-transformers.
 Generates 384-dimensional embeddings for semantic search.
+
+GPU Optimization: Uses GPU automatically if available (CUDA/MPS).
 """
 
 import os
-# Disable TensorFlow warnings and force CPU-only mode
-os.environ['TF_CPP_MIN_LOG_LEVEL'] = '3'
+# Reduce TensorFlow verbosity (keep warnings visible)
+os.environ['TF_CPP_MIN_LOG_LEVEL'] = '2'
 os.environ['TF_ENABLE_ONEDNN_OPTS'] = '0'
-os.environ['CUDA_VISIBLE_DEVICES'] = '-1'
 
 import re
 import logging
@@ -24,8 +25,24 @@ import docx
 import spacy
 from sentence_transformers import SentenceTransformer
 import numpy as np
+import torch
 
 logger = logging.getLogger(__name__)
+
+
+def get_optimal_device() -> str:
+    """
+    Detect the best available device for model inference.
+    
+    Returns:
+        Device string: 'cuda', 'mps', or 'cpu'
+    """
+    if torch.cuda.is_available():
+        return 'cuda'
+    elif hasattr(torch.backends, 'mps') and torch.backends.mps.is_available():
+        return 'mps'
+    else:
+        return 'cpu'
 
 
 class ResumeParser:
@@ -39,7 +56,11 @@ class ResumeParser:
     """
     
     def __init__(self):
-        """Initialize NLP models (may take 30-60 seconds on first run)."""
+        """Initialize NLP models with GPU optimization (may take 30-60 seconds on first run)."""
+        # Detect optimal device
+        self.device = get_optimal_device()
+        logger.info(f"Initializing ResumeParser on device: {self.device.upper()}")
+        
         logger.info("Loading spaCy model...")
         try:
             self.nlp = spacy.load("en_core_web_lg")
@@ -47,21 +68,25 @@ class ResumeParser:
             logger.error("spaCy model 'en_core_web_lg' not found. Run: python -m spacy download en_core_web_lg")
             raise
         
-        logger.info("Loading sentence-transformers embedding model...")
-        self.embedding_model = SentenceTransformer('sentence-transformers/all-MiniLM-L6-v2')
+        logger.info(f"Loading sentence-transformers embedding model on {self.device}...")
+        self.embedding_model = SentenceTransformer('sentence-transformers/all-MiniLM-L6-v2', device=self.device)
         
         logger.info("Loading BERT-based NER model (research-backed: 76.3M downloads)...")
         try:
             from transformers import AutoTokenizer, AutoModelForTokenClassification, pipeline
             self.ner_tokenizer = AutoTokenizer.from_pretrained("dslim/bert-base-NER")
             self.ner_model = AutoModelForTokenClassification.from_pretrained("dslim/bert-base-NER")
+            
+            # Set device for NER pipeline (-1 for CPU, 0 for CUDA)
+            device_id = 0 if self.device == 'cuda' else -1
             self.ner_pipeline = pipeline(
                 "ner", 
                 model=self.ner_model, 
                 tokenizer=self.ner_tokenizer, 
-                aggregation_strategy="simple"
+                aggregation_strategy="simple",
+                device=device_id
             )
-            logger.info("Advanced BERT-NER model loaded successfully")
+            logger.info(f"✓ BERT-NER model loaded successfully on {self.device.upper()}")
         except Exception as e:
             logger.warning(f"Could not load BERT-NER model: {e}. Falling back to spaCy only.")
             self.ner_pipeline = None
@@ -69,7 +94,7 @@ class ResumeParser:
         logger.info("Using sentence-transformers for job matching (replacing non-existent model)...")
         self.matching_model = self.embedding_model  # Use same model for consistency
         
-        logger.info("All models loaded successfully")
+        logger.info(f"✓ All models loaded successfully on {self.device.upper()}")
         
         # Common skill keywords (can be expanded)
         self.technical_skills = {

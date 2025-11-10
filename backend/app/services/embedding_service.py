@@ -21,8 +21,35 @@ import logging
 from sentence_transformers import SentenceTransformer
 import numpy as np
 from functools import lru_cache
+import torch
 
 logger = logging.getLogger(__name__)
+
+
+def get_optimal_device() -> str:
+    """
+    Detect the best available device for model inference.
+    
+    Priority:
+    1. CUDA (NVIDIA GPU) - Fastest
+    2. MPS (Apple Silicon GPU) - Fast
+    3. CPU - Fallback
+    
+    Returns:
+        Device string: 'cuda', 'mps', or 'cpu'
+    """
+    if torch.cuda.is_available():
+        device = 'cuda'
+        device_name = torch.cuda.get_device_name(0)
+        logger.info(f"🚀 GPU acceleration enabled: CUDA ({device_name})")
+        return device
+    elif hasattr(torch.backends, 'mps') and torch.backends.mps.is_available():
+        device = 'mps'
+        logger.info("🚀 GPU acceleration enabled: Apple Silicon (MPS)")
+        return device
+    else:
+        logger.info("⚙️ Using CPU (no GPU detected)")
+        return 'cpu'
 
 
 class EmbeddingService:
@@ -36,6 +63,7 @@ class EmbeddingService:
     _instance: Optional['EmbeddingService'] = None
     _model: Optional[SentenceTransformer] = None
     _embedding_dim: Optional[int] = None
+    _device: Optional[str] = None
     
     MODEL_NAME = "TechWolf/JobBERT-v3"
     EXPECTED_DIMENSION = 768  # JobBERT-v3 actually outputs 768-dim (BERT-base)
@@ -47,15 +75,30 @@ class EmbeddingService:
         return cls._instance
     
     def __init__(self):
-        """Initialize the embedding service (loads model on first call)."""
+        """Initialize the embedding service (loads model on first call with GPU optimization)."""
         if self._model is None:
+            # Detect optimal device
+            self._device = get_optimal_device()
+            
             logger.info(f"Loading JobBERT-v3 model: {self.MODEL_NAME}")
             try:
-                self._model = SentenceTransformer(self.MODEL_NAME)
+                # Load model with device optimization
+                self._model = SentenceTransformer(self.MODEL_NAME, device=self._device)
+                
                 # Get actual embedding dimension from model
                 test_emb = self._model.encode("test", convert_to_numpy=True)
                 self._embedding_dim = len(test_emb)
-                logger.info(f"✓ Model loaded successfully. Embedding dimension: {self._embedding_dim}")
+                
+                logger.info(f"✓ Model loaded successfully on {self._device.upper()}")
+                logger.info(f"✓ Embedding dimension: {self._embedding_dim}")
+                
+                # Performance hint
+                if self._device == 'cpu':
+                    logger.warning(
+                        "⚠️ Running on CPU. For 5-10x faster embeddings, use a machine with:\n"
+                        "   - NVIDIA GPU (CUDA support)\n"
+                        "   - Apple Silicon (M1/M2/M3 with MPS support)"
+                    )
             except Exception as e:
                 logger.error(f"Failed to load JobBERT-v3 model: {e}")
                 raise RuntimeError(f"Could not initialize embedding service: {e}")

@@ -81,12 +81,48 @@ class JobUpdate(BaseModel):
                 raise ValueError('salary_max must be greater than or equal to salary_min')
         return v
 
-class JobResponse(JobBase):
-    """Schema for job responses"""
+class JobResponse(BaseModel):
+    """Schema for job responses - maps from Job model"""
     id: int
-    is_active: bool
+    title: str
+    company: str  # Maps from company_name in model
+    description: str
+    requirements: Optional[str] = None  # Will be converted from list to string
+    location: Optional[str] = None
+    salary_min: Optional[int] = None
+    salary_max: Optional[int] = None
+    employment_type: str  # Maps from job_type in model
+    remote_option: bool  # Maps from is_remote in model
+    experience_level: str
+    skills_required: Optional[List[str]] = None  # Maps from required_skills in model
+    department: Optional[str] = None
+    is_active: bool  # Maps from status field (active/inactive)
+    organization_id: Optional[int] = None
     created_at: datetime
     updated_at: datetime
+    
+    @classmethod
+    def from_orm(cls, db_job):
+        """Custom ORM converter to handle field name mismatches"""
+        return cls(
+            id=db_job.id,
+            title=db_job.title,
+            company=db_job.company_name,  # company_name → company
+            description=db_job.description,
+            requirements=' '.join(db_job.requirements) if db_job.requirements else None,  # list → string
+            location=db_job.location,
+            salary_min=db_job.salary_min,
+            salary_max=db_job.salary_max,
+            employment_type=db_job.job_type.value if hasattr(db_job.job_type, 'value') else str(db_job.job_type),  # job_type → employment_type
+            remote_option=db_job.is_remote,  # is_remote → remote_option
+            experience_level=db_job.experience_level.value if hasattr(db_job.experience_level, 'value') else str(db_job.experience_level),
+            skills_required=db_job.required_skills,  # required_skills → skills_required
+            department=db_job.department,
+            is_active=(db_job.status == "active" or str(db_job.status).lower() == "active"),  # status → is_active
+            organization_id=db_job.organization_id,
+            created_at=db_job.created_at,
+            updated_at=db_job.updated_at
+        )
     
     class Config:
         from_attributes = True
