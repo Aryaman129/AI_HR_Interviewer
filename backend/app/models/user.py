@@ -82,6 +82,12 @@ class User(Base):
     def __repr__(self):
         return f"<User {self.full_name} ({self.email})>"
     
+    def is_locked(self) -> bool:
+        """Check if account is currently locked"""
+        if self.locked_until and self.locked_until > datetime.utcnow():
+            return True
+        return False
+    
     @property
     def is_admin(self) -> bool:
         """Check if user has admin privileges"""
